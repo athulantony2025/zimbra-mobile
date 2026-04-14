@@ -3,18 +3,21 @@ import { View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator, Styl
 import { useMutation } from '@apollo/client/react';
 import { useAppDispatch } from '../store/hooks';
 import { login } from '../store/authSlice';
+import Toast from 'react-native-toast-message';
 import { LOGIN_MUTATION } from '../graphql/mutations';
 
 const Login: React.FC = () => {
   const dispatch = useAppDispatch();
+
+  const [loading, setLoading] = useState(false);
+
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [twoFactorCode, setTwoFactorCode] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
+
+  const [twoFactorCode, setTwoFactorCode] = useState('');
   const [twoFactorRequired, setTwoFactorRequired] = useState(false);
   const [trustedDeviceToken, setTrustedDeviceToken] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [loginMutation] = useMutation(LOGIN_MUTATION);
 
@@ -25,7 +28,7 @@ const Login: React.FC = () => {
     },
     password,
     tokenType: 'JWT',
-    isCsrfSupported: true,
+    isCsrfSupported: false,
     twoFactorCode: code,
     trustedDeviceToken: trustedDeviceToken || undefined,
     isDeviceTrusted: false,
@@ -37,8 +40,6 @@ const Login: React.FC = () => {
       Alert.alert('Error', 'Please enter both username and password');
       return;
     }
-
-    setErrorMessage(null);
     setLoading(true);
 
     try {
@@ -52,15 +53,9 @@ const Login: React.FC = () => {
 
       const authData = (data as any).authenticate;
       const authToken = authData?.authToken ?? null;
-      const csrfToken = authData?.csrfToken ?? null;
-
-      if (authToken && csrfToken) {
-        dispatch(login({ authToken, csrfToken }));
-        return;
-      }
 
       if (authToken && authData?.twoFactorAuthRequired !== 'TRUE') {
-        dispatch(login({ authToken, csrfToken }));
+        dispatch(login({ authToken }));
         return;
       }
 
@@ -78,12 +73,12 @@ const Login: React.FC = () => {
         setLoading(false);
         return;
       }
-
-      Alert.alert('Login Error', 'Authentication failed. Please check your credentials.');
-      setErrorMessage('Authentication failed. Please check your username and password.');
     } catch (err: any) {
-      Alert.alert('Login Error', err.message || 'Login failed');
-      setErrorMessage(err.message || 'Login failed');
+      Toast.show({
+        type: 'error',
+        text1: 'Authentication failed',
+        text2: 'Please check your username and password',
+      });
     } finally {
       setLoading(false);
     }
@@ -95,7 +90,6 @@ const Login: React.FC = () => {
       return;
     }
 
-    setErrorMessage(null);
     setLoading(true);
 
     try {
@@ -105,36 +99,21 @@ const Login: React.FC = () => {
         }
       });
 
+      console.log(JSON.stringify(data))
+
       const authData = (data as any).authenticate;
       const authToken = authData?.authToken ?? null;
-      const csrfToken = authData?.csrfToken ?? null;
 
-      if (authToken && csrfToken) {
-        dispatch(login({ authToken, csrfToken }));
+      if (authToken) {
+        dispatch(login({ authToken }));
         return;
       }
-
-      if (authData?.resetPassword === 'TRUE') {
-        Alert.alert('Password Reset Required', 'Password reset is required');
-        setLoading(false);
-        return;
-      }
-
-      if (authData?.twoFactorAuthRequired === 'TRUE') {
-        const message = 'Invalid 2FA code. Please try again.';
-        Alert.alert('2FA Error', message);
-        setErrorMessage(message);
-        setLoading(false);
-        return;
-      }
-
-      const fallbackMessage = '2FA verification failed. Please try again.';
-      Alert.alert('2FA Error', fallbackMessage);
-      setErrorMessage(fallbackMessage);
     } catch (err: any) {
-      const message = err.message || '2FA login failed';
-      Alert.alert('2FA Error', message);
-      setErrorMessage(message);
+      Toast.show({
+        type: 'error',
+        text1: 'Authentication failed',
+        text2: 'Two-factor code is incorrect or expired',
+      });
     } finally {
       setLoading(false);
     }
@@ -144,7 +123,6 @@ const Login: React.FC = () => {
     setTwoFactorRequired(false);
     setTwoFactorCode('');
     setTrustedDeviceToken(null);
-    setErrorMessage(null);
   };
 
   return (
@@ -213,7 +191,6 @@ const Login: React.FC = () => {
               maxLength={6}
               editable={!loading}
             />
-            {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
           </View>
 
           <TouchableOpacity
