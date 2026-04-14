@@ -1,0 +1,23 @@
+# ninja log v5
+0	22	0	/Users/dbiz.ai/Documents/mobile/ZimbraLoginApp/android/app/.cxx/Debug/2423696m/arm64-v8a/CMakeFiles/cmake.verify_globs	2c1ee457d94b33c6
+45	7009	1776153545719079275	rnasyncstorage_autolinked_build/CMakeFiles/react_codegen_rnasyncstorage.dir/react/renderer/components/rnasyncstorage/ComponentDescriptors.cpp.o	b7959a4afd2b00d2
+21	1589	1776156085851383408	CMakeFiles/appmodules.dir/OnLoad.cpp.o	72acb05190eb180d
+0	15	0	clean	9c1797779e701977
+56	551	1776159806874091270	build.ninja	f86875281e88e6a2
+4463	8576	1776153547299411979	safeareacontext_autolinked_build/CMakeFiles/react_codegen_safeareacontext.dir/Users/dbiz.ai/Documents/mobile/ZimbraLoginApp/node_modules/react-native-safe-area-context/android/build/generated/source/codegen/jni/react/renderer/components/safeareacontext/EventEmitters.cpp.o	36f5f0542bc65fd1
+5932	9914	1776153548638156469	safeareacontext_autolinked_build/CMakeFiles/react_codegen_safeareacontext.dir/Users/dbiz.ai/Documents/mobile/ZimbraLoginApp/node_modules/react-native-safe-area-context/android/build/generated/source/codegen/jni/react/renderer/components/safeareacontext/ShadowNodes.cpp.o	388a679a5c005843
+20	2488	1776156086742807998	CMakeFiles/appmodules.dir/Users/dbiz.ai/Documents/mobile/ZimbraLoginApp/android/app/build/generated/autolinking/src/main/jni/autolinking.cpp.o	10bfecbdf29b733b
+7320	9617	1776153548336477497	safeareacontext_autolinked_build/CMakeFiles/react_codegen_safeareacontext.dir/Users/dbiz.ai/Documents/mobile/ZimbraLoginApp/node_modules/react-native-safe-area-context/android/build/generated/source/codegen/jni/safeareacontext-generated.cpp.o	f2dfbc6b6bb37f13
+48	7320	1776153546017877185	rnasyncstorage_autolinked_build/CMakeFiles/react_codegen_rnasyncstorage.dir/react/renderer/components/rnasyncstorage/Props.cpp.o	69f1820b25fd8b6b
+3604	9905	1776153548618047660	safeareacontext_autolinked_build/CMakeFiles/react_codegen_safeareacontext.dir/Users/dbiz.ai/Documents/mobile/ZimbraLoginApp/node_modules/react-native-safe-area-context/android/build/generated/source/codegen/jni/react/renderer/components/safeareacontext/ComponentDescriptors.cpp.o	705989805cc0c2b9
+53	9409	1776153548118893954	safeareacontext_autolinked_build/CMakeFiles/react_codegen_safeareacontext.dir/Users/dbiz.ai/Documents/mobile/ZimbraLoginApp/node_modules/react-native-safe-area-context/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewShadowNode.cpp.o	f2a5f7db5f12de70
+5397	9970	1776153548689547458	safeareacontext_autolinked_build/CMakeFiles/react_codegen_safeareacontext.dir/Users/dbiz.ai/Documents/mobile/ZimbraLoginApp/node_modules/react-native-safe-area-context/android/build/generated/source/codegen/jni/react/renderer/components/safeareacontext/Props.cpp.o	37b55ad721efcd5e
+47	4463	1776153543177070838	rnasyncstorage_autolinked_build/CMakeFiles/react_codegen_rnasyncstorage.dir/react/renderer/components/rnasyncstorage/EventEmitters.cpp.o	bda71955a2a2fc57
+53	7709	1776153546427087878	safeareacontext_autolinked_build/CMakeFiles/react_codegen_safeareacontext.dir/Users/dbiz.ai/Documents/mobile/ZimbraLoginApp/node_modules/react-native-safe-area-context/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewState.cpp.o	f6b62c82cabf2645
+9970	10200	1776153548924632500	/Users/dbiz.ai/Documents/mobile/ZimbraLoginApp/android/app/build/intermediates/cxx/Debug/2423696m/obj/arm64-v8a/libreact_codegen_safeareacontext.so	e3c43cc66455a860
+7010	9064	1776153547780311846	safeareacontext_autolinked_build/CMakeFiles/react_codegen_safeareacontext.dir/Users/dbiz.ai/Documents/mobile/ZimbraLoginApp/node_modules/react-native-safe-area-context/android/build/generated/source/codegen/jni/react/renderer/components/safeareacontext/States.cpp.o	e4197648034cabae
+2488	2687	1776156086954316207	/Users/dbiz.ai/Documents/mobile/ZimbraLoginApp/android/app/build/intermediates/cxx/Debug/2423696m/obj/arm64-v8a/libappmodules.so	fbeecd3bbe98b669
+51	3604	1776153542327768192	rnasyncstorage_autolinked_build/CMakeFiles/react_codegen_rnasyncstorage.dir/react/renderer/components/rnasyncstorage/States.cpp.o	ab383e18568b5ba3
+51	5397	1776153544111267961	rnasyncstorage_autolinked_build/CMakeFiles/react_codegen_rnasyncstorage.dir/rnasyncstorage-generated.cpp.o	54a16079c2aaeeb7
+49	5932	1776153544636501809	rnasyncstorage_autolinked_build/CMakeFiles/react_codegen_rnasyncstorage.dir/react/renderer/components/rnasyncstorage/ShadowNodes.cpp.o	e0591bd37404a458
+0	21	0	/Users/dbiz.ai/Documents/mobile/ZimbraLoginApp/android/app/.cxx/Debug/2423696m/arm64-v8a/CMakeFiles/cmake.verify_globs	2c1ee457d94b33c6
