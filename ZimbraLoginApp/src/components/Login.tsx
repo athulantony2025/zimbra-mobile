@@ -45,7 +45,7 @@ const Login: React.FC = () => {
     try {
       const { data } = await loginMutation({
         variables: {
-          authInput: buildAuthInput()
+          authInput: buildAuthInput('')
         }
       });
 
