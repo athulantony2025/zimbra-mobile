@@ -7,19 +7,14 @@ import Login from './src/components/Login';
 import Home from './src/components/Home';
 import store from './src/store/store';
 import { useAppSelector } from './src/store/hooks';
-import { logout } from './src/store/authSlice';
 
 const AppContent = () => {
   const isLoggedIn = useAppSelector((state) => state.auth.isLoggedIn);
 
-  const handleLogout = () => {
-    store.dispatch(logout());
-  };
-
   return (
     <View style={styles.container}>
       {isLoggedIn ? (
-        <Home onLogout={handleLogout} />
+        <Home />
       ) : (
         <Login />
       )}

@@ -1,11 +1,13 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { logout } from '../store/authSlice';
+import store from '../store/store';
 
-interface HomeProps {
-  onLogout: () => void;
-}
+const onLogout = () => {
+  store.dispatch(logout());
+};
 
-const Home: React.FC<HomeProps> = ({ onLogout }) => {
+const Home = () => {
   const handleLogout = () => {
     Alert.alert('Logout', 'Are you sure you want to logout?', [
       { text: 'Cancel', style: 'cancel' },
