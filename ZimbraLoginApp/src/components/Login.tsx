@@ -27,7 +27,6 @@ const Login: React.FC = () => {
       key: username
     },
     password,
-    tokenType: 'JWT',
     isCsrfSupported: false,
     twoFactorCode: code,
     trustedDeviceToken: trustedDeviceToken || undefined,
@@ -45,7 +44,7 @@ const Login: React.FC = () => {
     try {
       const { data } = await loginMutation({
         variables: {
-          authInput: buildAuthInput('')
+          authInput: buildAuthInput()
         }
       });
 
