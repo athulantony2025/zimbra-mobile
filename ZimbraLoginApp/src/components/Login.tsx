@@ -48,11 +48,18 @@ const Login: React.FC = () => {
         }
       });
 
+      console.log(JSON.stringify(data))
+
       const authData = (data as any).authenticate;
       const authToken = authData?.authToken ?? null;
       const csrfToken = authData?.csrfToken ?? null;
 
       if (authToken && csrfToken) {
+        dispatch(login({ authToken, csrfToken }));
+        return;
+      }
+
+      if (authToken && authData?.twoFactorAuthRequired !== 'TRUE') {
         dispatch(login({ authToken, csrfToken }));
         return;
       }
