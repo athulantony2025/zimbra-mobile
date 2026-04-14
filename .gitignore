@@ -1,0 +1,25 @@
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# dependencies
+ZimbraLoginApp/node_modules/
+
+# CocoaPods
+ZimbraLoginApp/ios/Pods/
+
+# Android
+ZimbraLoginApp/android/app/build/
+ZimbraLoginApp/android/build/
+
+# iOS
+ZimbraLoginApp/ios/build/
+
+# Metro
+ZimbraLoginApp/.metro/
+
+# Expo
+ZimbraLoginApp/.expo/
+ZimbraLoginApp/.expo-shared/
+
+# production
+ZimbraLoginApp/build/
+
