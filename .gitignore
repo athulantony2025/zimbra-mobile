@@ -1,12 +1,17 @@
 # dependencies
 ZimbraLoginApp/node_modules/
 
+# repo-level docs/locks
+README.md
+
 # CocoaPods
 ZimbraLoginApp/ios/Pods/
 
 # Android
 ZimbraLoginApp/android/app/build/
 ZimbraLoginApp/android/build/
+ZimbraLoginApp/android/.gradle/
+ZimbraLoginApp/android/app/.cxx/
 
 # iOS
 ZimbraLoginApp/ios/build/
@@ -20,4 +25,3 @@ ZimbraLoginApp/.expo-shared/
 
 # production
 ZimbraLoginApp/build/
-
