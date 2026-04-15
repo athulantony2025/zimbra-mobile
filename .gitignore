@@ -25,3 +25,7 @@ ZimbraLoginApp/.expo-shared/
 
 # production
 ZimbraLoginApp/build/
+
+# macOS
+.DS_Store
+**/.DS_Store
