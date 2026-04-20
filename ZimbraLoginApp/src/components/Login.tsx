@@ -1,5 +1,13 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator, StyleSheet } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
+  StyleSheet,
+} from 'react-native';
 import { useMutation } from '@apollo/client/react';
 import { useAppDispatch } from '../store/hooks';
 import { login } from '../store/authSlice';
@@ -17,21 +25,23 @@ const Login: React.FC = () => {
 
   const [twoFactorCode, setTwoFactorCode] = useState('');
   const [twoFactorRequired, setTwoFactorRequired] = useState(false);
-  const [trustedDeviceToken, setTrustedDeviceToken] = useState<string | null>(null);
+  const [trustedDeviceToken, setTrustedDeviceToken] = useState<string | null>(
+    null,
+  );
 
   const [loginMutation] = useMutation(LOGIN_MUTATION);
 
   const buildAuthInput = (code?: string) => ({
     account: {
       accountBy: 'name',
-      key: username
+      key: username,
     },
     password,
     isCsrfSupported: false,
     twoFactorCode: code,
     trustedDeviceToken: trustedDeviceToken || undefined,
     isDeviceTrusted: false,
-    doPersistCookie: true
+    doPersistCookie: true,
   });
 
   const handleLogin = async () => {
@@ -44,11 +54,11 @@ const Login: React.FC = () => {
     try {
       const { data } = await loginMutation({
         variables: {
-          authInput: buildAuthInput()
-        }
+          authInput: buildAuthInput(),
+        },
       });
 
-      console.log(JSON.stringify(data))
+      console.log(JSON.stringify(data));
 
       const authData = (data as any).authenticate;
       const authToken = authData?.authToken ?? null;
@@ -94,11 +104,11 @@ const Login: React.FC = () => {
     try {
       const { data } = await loginMutation({
         variables: {
-          authInput: buildAuthInput(twoFactorCode)
-        }
+          authInput: buildAuthInput(twoFactorCode),
+        },
       });
 
-      console.log(JSON.stringify(data))
+      console.log(JSON.stringify(data));
 
       const authData = (data as any).authenticate;
       const authToken = authData?.authToken ?? null;
@@ -157,10 +167,12 @@ const Login: React.FC = () => {
               />
               <TouchableOpacity
                 style={styles.eyeButton}
-                onPress={() => setShowPassword((prev) => !prev)}
+                onPress={() => setShowPassword(prev => !prev)}
                 disabled={loading}
               >
-                <Text style={styles.eyeText}>{showPassword ? 'Hide' : 'Show'}</Text>
+                <Text style={styles.eyeText}>
+                  {showPassword ? 'Hide' : 'Show'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -218,21 +230,45 @@ const Login: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', padding: 20, backgroundColor: '#f5f5f5' },
-  title: { fontSize: 24, fontWeight: 'bold', textAlign: 'center', marginBottom: 30, color: '#333' },
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 20,
+    backgroundColor: '#f5f5f5',
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 30,
+    color: '#333',
+  },
   inputContainer: { marginBottom: 20 },
   label: { fontSize: 16, fontWeight: '500', marginBottom: 8, color: '#333' },
   passwordRow: { flexDirection: 'row', alignItems: 'center' },
   passwordInput: { flex: 1, marginRight: 10 },
   eyeButton: { paddingVertical: 12, paddingHorizontal: 10 },
   eyeText: { color: '#007bff', fontWeight: '600' },
-  input: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 12, fontSize: 16, backgroundColor: '#fff' },
-  button: { backgroundColor: '#007bff', padding: 15, borderRadius: 8, alignItems: 'center', marginTop: 10 },
+  input: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    backgroundColor: '#fff',
+  },
+  button: {
+    backgroundColor: '#007bff',
+    padding: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 10,
+  },
   buttonDisabled: { backgroundColor: '#ccc' },
   buttonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
   linkButton: { marginTop: 12, alignItems: 'center' },
   linkText: { color: '#007bff', fontWeight: '600' },
-  errorText: { color: '#cc0000', marginTop: 10, textAlign: 'center' }
+  errorText: { color: '#cc0000', marginTop: 10, textAlign: 'center' },
 });
 
 export default Login;
