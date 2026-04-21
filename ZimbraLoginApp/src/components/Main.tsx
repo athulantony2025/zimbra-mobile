@@ -4,6 +4,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import MailFolders from './MailFolders';
 import MailList from './MailList';
+import ViewMail from './ViewMail';
 import type { MainStackParamList } from '../navigation/types';
 
 const Stack = createNativeStackNavigator<MainStackParamList>();
@@ -35,6 +36,13 @@ const Main: React.FC = () => {
           component={MailList}
           options={({ route }) => ({
             title: route.params?.folderName || 'Mail List',
+          })}
+        />
+        <Stack.Screen
+          name="ViewMail"
+          component={ViewMail}
+          options={({ route }) => ({
+            title: route.params?.subject || 'View Mail',
           })}
         />
       </Stack.Navigator>

@@ -14,6 +14,18 @@ import { login } from '../store/authSlice';
 import Toast from 'react-native-toast-message';
 import { LOGIN_MUTATION } from '../graphql/mutations';
 
+const getToken = (raw: unknown) => {
+  if (typeof raw === 'string') return raw.replace(/^Bearer\s+/i, '').trim();
+  if (
+    raw &&
+    typeof raw === 'object' &&
+    typeof (raw as { _content?: string })._content === 'string'
+  ) {
+    return (raw as { _content: string })._content.trim();
+  }
+  return '';
+};
+
 const Login: React.FC = () => {
   const dispatch = useAppDispatch();
 
@@ -61,7 +73,7 @@ const Login: React.FC = () => {
       console.log(JSON.stringify(data));
 
       const authData = (data as any).authenticate;
-      const authToken = authData?.authToken ?? null;
+      const authToken = getToken(authData?.authToken);
 
       if (authToken && authData?.twoFactorAuthRequired !== 'TRUE') {
         dispatch(login({ authToken }));
@@ -111,7 +123,7 @@ const Login: React.FC = () => {
       console.log(JSON.stringify(data));
 
       const authData = (data as any).authenticate;
-      const authToken = authData?.authToken ?? null;
+      const authToken = getToken(authData?.authToken);
 
       if (authToken) {
         dispatch(login({ authToken }));

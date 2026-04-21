@@ -198,6 +198,8 @@ const MailFolders: React.FC = () => {
         navigation.navigate('MailList', {
           folderId: item.id,
           folderName: item.name,
+          unreadCount: item.unread,
+          itemCount: item.nonFolderItemCount,
         })
       }
       activeOpacity={0.7}

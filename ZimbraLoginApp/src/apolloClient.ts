@@ -11,12 +11,15 @@ const httpLink = new HttpLink({
 });
 
 const authLink = setContext(() => {
-  const csrfToken = store.getState().auth.csrfToken;
+  const authToken = store.getState().auth.authToken;
 
   return {
     headers: {
       'content-type': 'text/plain;charset=UTF-8',
-      ...(csrfToken && { 'X-Zimbra-Csrf-Token': csrfToken })
+      ...(authToken && {
+        Authorization: `Bearer ${authToken}`,
+        Cookie: `ZM_AUTH_TOKEN=${authToken};`,
+      }),
     }
   };
 });
