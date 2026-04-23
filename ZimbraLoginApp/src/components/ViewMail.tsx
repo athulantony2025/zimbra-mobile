@@ -59,6 +59,16 @@ const DEFAULT_PREFERENCES: MailPreferences = {
 const BASE_URL = 'https://apps-development.zimbradev.com';
 const MAX_BODY_SIZE = 250000;
 const HEADER_INPUT = [{ n: 'IN-REPLY-TO' }];
+const EVENT_MARKERS = ['begin:vcalendar', 'begin:vevent', 'dtstart', 'method:request'];
+
+type EventDetails = {
+  summary?: string;
+  start?: string;
+  end?: string;
+  location?: string;
+  organizer?: string;
+  method?: string;
+};
 
 const toArray = <T,>(value?: T | T[] | null): T[] => {
   if (!value) return [];
@@ -138,6 +148,117 @@ const stripHtml = (html: string) => {
     .replace(/\n\s+\n/g, '\n\n')
     .replace(/[ \t]{2,}/g, ' ')
     .trim();
+};
+
+const decodeIcsText = (value: string) =>
+  value
+    .replace(/\\n/gi, '\n')
+    .replace(/\\,/g, ',')
+    .replace(/\\;/g, ';')
+    .replace(/\\\\/g, '\\');
+
+const readOrganizer = (value: string) => {
+  const normalized = decodeIcsText(value).trim();
+  const mailtoMatch = normalized.match(/mailto:([^;]+)/i);
+  return mailtoMatch?.[1] || normalized;
+};
+
+const parseIcsDate = (rawValue?: string) => {
+  const value = String(rawValue || '').trim();
+  if (!value) return '';
+
+  const dateOnlyMatch = value.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (dateOnlyMatch) {
+    const [, year, month, day] = dateOnlyMatch;
+    const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+    return parsed.toLocaleDateString();
+  }
+
+  const dateTimeMatch = value.match(
+    /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z)?$/,
+  );
+  if (dateTimeMatch) {
+    const [, year, month, day, hour, minute, second, isUtc] = dateTimeMatch;
+    const parsed = isUtc
+      ? new Date(
+          Date.UTC(
+            Number(year),
+            Number(month) - 1,
+            Number(day),
+            Number(hour),
+            Number(minute),
+            Number(second),
+          ),
+        )
+      : new Date(
+          Number(year),
+          Number(month) - 1,
+          Number(day),
+          Number(hour),
+          Number(minute),
+          Number(second),
+        );
+    return parsed.toLocaleString();
+  }
+
+  return decodeIcsText(value);
+};
+
+const readIcsField = (ics: string, field: string) => {
+  const pattern = new RegExp(`^${field}(?:;[^:]*)?:(.+)$`, 'im');
+  const match = ics.match(pattern);
+  return match?.[1]?.trim() || '';
+};
+
+const parseEventDetailsFromText = (content: string): EventDetails | null => {
+  const normalized = String(content || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\n[ \t]/g, '');
+  if (!normalized.trim()) return null;
+
+  const summary = decodeIcsText(readIcsField(normalized, 'SUMMARY'));
+  const location = decodeIcsText(readIcsField(normalized, 'LOCATION'));
+  const organizer = readOrganizer(readIcsField(normalized, 'ORGANIZER'));
+  const method = decodeIcsText(readIcsField(normalized, 'METHOD')).toUpperCase();
+  const start = parseIcsDate(readIcsField(normalized, 'DTSTART'));
+  const end = parseIcsDate(readIcsField(normalized, 'DTEND'));
+
+  const hasEventFields = !!(summary || location || organizer || start || end || method);
+  return hasEventFields
+    ? {
+        summary,
+        start,
+        end,
+        location,
+        organizer,
+        method,
+      }
+    : null;
+};
+
+const hasCalendarAttachment = (message?: MailMessage) =>
+  (message?.attachments || []).some(attachment => {
+    const contentType = String(attachment.contentType || '').toLowerCase();
+    const name = String(attachment.name || '').toLowerCase();
+    return contentType.includes('text/calendar') || name.endsWith('.ics');
+  });
+
+const isEventMessage = (message?: MailMessage) => {
+  if (!message) return false;
+  const bodyContent = `${message.text || ''}\n${stripHtml(message.html || '')}`
+    .toLowerCase();
+  const hasBodyMarkers = EVENT_MARKERS.some(marker => bodyContent.includes(marker));
+  return hasBodyMarkers || hasCalendarAttachment(message);
+};
+
+const getEventDetails = (message?: MailMessage) => {
+  if (!message) return null;
+  const sources = [message.text || '', stripHtml(message.html || '')].filter(Boolean);
+  for (const source of sources) {
+    const parsed = parseEventDetailsFromText(source);
+    if (parsed) return parsed;
+  }
+  return null;
 };
 
 const getDisplayBody = (message?: MailMessage) => {
@@ -707,9 +828,69 @@ const ViewMail: React.FC = () => {
     );
   };
 
+  const renderEventDetails = (
+    details: EventDetails | null,
+    calendarAttachmentDetected = false,
+  ) => {
+    if (!details && !calendarAttachmentDetected) return null;
+
+    return (
+      <View style={styles.eventWrap}>
+        <Text style={styles.eventTitle}>Event Details</Text>
+        {!details && calendarAttachmentDetected && (
+          <Text style={styles.eventLine}>
+            Calendar invite attachment detected. Event metadata was not in message
+            body.
+          </Text>
+        )}
+        {!!details.summary && (
+          <Text style={styles.eventLine}>
+            <Text style={styles.eventKey}>Title: </Text>
+            {details.summary}
+          </Text>
+        )}
+        {!!details.start && (
+          <Text style={styles.eventLine}>
+            <Text style={styles.eventKey}>Starts: </Text>
+            {details.start}
+          </Text>
+        )}
+        {!!details.end && (
+          <Text style={styles.eventLine}>
+            <Text style={styles.eventKey}>Ends: </Text>
+            {details.end}
+          </Text>
+        )}
+        {!!details.location && (
+          <Text style={styles.eventLine}>
+            <Text style={styles.eventKey}>Location: </Text>
+            {details.location}
+          </Text>
+        )}
+        {!!details.organizer && (
+          <Text style={styles.eventLine}>
+            <Text style={styles.eventKey}>Organizer: </Text>
+            {details.organizer}
+          </Text>
+        )}
+        {!!details.method && (
+          <Text style={styles.eventLine}>
+            <Text style={styles.eventKey}>Type: </Text>
+            {details.method}
+          </Text>
+        )}
+      </View>
+    );
+  };
+
   const renderMessageContent = () => (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>Body</Text>
+      {isEventMessage(message || undefined) &&
+        renderEventDetails(
+          getEventDetails(message || undefined),
+          hasCalendarAttachment(message || undefined),
+        )}
       <Text style={styles.bodyText}>{getDisplayBody(message || undefined)}</Text>
       {renderAttachments(message?.attachments)}
     </View>
@@ -725,6 +906,11 @@ const ViewMail: React.FC = () => {
             <Text style={styles.threadSubject}>
               {threadMessage.subject || '(No subject)'}
             </Text>
+            {isEventMessage(threadMessage) &&
+              renderEventDetails(
+                getEventDetails(threadMessage),
+                hasCalendarAttachment(threadMessage),
+              )}
             <Text style={styles.bodyText}>{getDisplayBody(threadMessage)}</Text>
             {renderAttachments(threadMessage.attachments)}
           </View>
@@ -826,6 +1012,30 @@ const styles = StyleSheet.create({
     color: '#111827',
     fontSize: 14,
     lineHeight: 22,
+  },
+  eventWrap: {
+    borderWidth: 1,
+    borderColor: '#dbeafe',
+    borderRadius: 8,
+    backgroundColor: '#f8fbff',
+    padding: 10,
+    marginBottom: 10,
+  },
+  eventTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1e3a8a',
+    marginBottom: 6,
+  },
+  eventLine: {
+    fontSize: 13,
+    color: '#1f2937',
+    marginBottom: 2,
+    lineHeight: 20,
+  },
+  eventKey: {
+    fontWeight: '700',
+    color: '#1f2937',
   },
   attachmentRow: {
     borderTopWidth: 1,
