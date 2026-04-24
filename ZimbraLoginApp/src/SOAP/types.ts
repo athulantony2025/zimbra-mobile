@@ -25,16 +25,8 @@ export type MailListItem = {
   su?: string;
   d?: string | number;
   f?: string;
-  t?: string | number | Array<string | number>;
-  tn?: string | string[];
   e?: Array<{ t?: string; a?: string; p?: string }>;
   _viewType?: 'message' | 'conversation';
-};
-
-/** Tag metadata used to render chips in MailList. */
-export type TagMeta = {
-  name: string;
-  color?: string | number;
 };
 
 /** Response shape returned by `fetchMailFolders`. */
@@ -46,5 +38,4 @@ export type MailFoldersResult = {
 /** Response shape returned by `fetchMailListData`. */
 export type MailListDataResult = {
   items: MailListItem[];
-  tagMap: Record<string, TagMeta>;
 };

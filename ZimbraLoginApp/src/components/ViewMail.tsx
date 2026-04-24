@@ -1,10 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { useApolloClient } from '@apollo/client/react';
@@ -16,345 +14,41 @@ import {
   GET_CONVERSATION_QUERY,
   GET_MESSAGE_QUERY,
   GET_PREFERENCES_QUERY,
+} from '../graphql/query';
+import {
   MARK_READ_MUTATION,
   SEND_DELIVERY_REPORT_MUTATION,
-} from '../graphql/mailOperations';
-
-type MailAttachment = {
-  name?: string;
-  size?: number;
-  contentType?: string;
-  part?: string;
-};
-
-type MailMessage = {
-  id: string;
-  subject?: string;
-  flags?: string;
-  html?: string;
-  text?: string;
-  attachments?: MailAttachment[];
-};
-
-type MailConversation = {
-  id: string;
-  subject?: string;
-  flags?: string;
-  unread?: number;
-  messages?: MailMessage[];
-};
-
-type MailPreferences = {
-  zimbraPrefMessageViewHtmlPreferred: boolean;
-  zimbraPrefMarkMsgRead: number;
-  zimbraPrefMailSendReadReceipts: string;
-};
-
-const DEFAULT_PREFERENCES: MailPreferences = {
-  zimbraPrefMessageViewHtmlPreferred: true,
-  zimbraPrefMarkMsgRead: -1,
-  zimbraPrefMailSendReadReceipts: 'prompt',
-};
-
-const BASE_URL = 'https://apps-development.zimbradev.com';
-const MAX_BODY_SIZE = 250000;
-const HEADER_INPUT = [{ n: 'IN-REPLY-TO' }];
-const EVENT_MARKERS = ['begin:vcalendar', 'begin:vevent', 'dtstart', 'method:request'];
-
-type EventDetails = {
-  summary?: string;
-  start?: string;
-  end?: string;
-  location?: string;
-  organizer?: string;
-  method?: string;
-};
-
-const toArray = <T,>(value?: T | T[] | null): T[] => {
-  if (!value) return [];
-  return Array.isArray(value) ? value : [value];
-};
-
-const getToken = (raw: unknown) => {
-  if (typeof raw === 'string') return raw.replace(/^Bearer\s+/i, '').trim();
-  if (
-    raw &&
-    typeof raw === 'object' &&
-    typeof (raw as { _content?: string })._content === 'string'
-  ) {
-    return (raw as { _content: string })._content.trim();
-  }
-  return '';
-};
-
-const toBooleanPreference = (value: unknown, fallback = true) => {
-  if (typeof value === 'boolean') return value;
-  if (typeof value === 'string') return value.toLowerCase() !== 'false';
-  return fallback;
-};
-
-const toNumberPreference = (value: unknown, fallback = -1) => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-};
-
-const toNumber = (value: unknown, fallback = 0) => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-};
-
-const isUnreadByFlags = (flags?: string) =>
-  typeof flags === 'string' ? flags.includes('u') : false;
-
-const getErrorMessage = (error: unknown) => {
-  if (typeof error === 'string') return error;
-  if (error && typeof error === 'object' && 'message' in error) {
-    const message = (error as { message?: unknown }).message;
-    return typeof message === 'string' ? message : String(message ?? '');
-  }
-  return String(error ?? '');
-};
-
-const isGraphqlSchemaUnsupported = (error: unknown) => {
-  const message = getErrorMessage(error).toLowerCase();
-  return (
-    message.includes('validation error') ||
-    message.includes('cannot query field') ||
-    message.includes('unknown type') ||
-    message.includes('fieldundefined')
-  );
-};
-
-const decodeHtmlEntities = (input: string) =>
-  input
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'");
-
-const stripHtml = (html: string) => {
-  const withoutScriptAndStyle = html
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ');
-  const withLineBreaks = withoutScriptAndStyle
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n')
-    .replace(/<\/div>/gi, '\n')
-    .replace(/<\/li>/gi, '\n');
-  const noTags = withLineBreaks.replace(/<[^>]+>/g, ' ');
-  return decodeHtmlEntities(noTags)
-    .replace(/\n\s+\n/g, '\n\n')
-    .replace(/[ \t]{2,}/g, ' ')
-    .trim();
-};
-
-const decodeIcsText = (value: string) =>
-  value
-    .replace(/\\n/gi, '\n')
-    .replace(/\\,/g, ',')
-    .replace(/\\;/g, ';')
-    .replace(/\\\\/g, '\\');
-
-const readOrganizer = (value: string) => {
-  const normalized = decodeIcsText(value).trim();
-  const mailtoMatch = normalized.match(/mailto:([^;]+)/i);
-  return mailtoMatch?.[1] || normalized;
-};
-
-const parseIcsDate = (rawValue?: string) => {
-  const value = String(rawValue || '').trim();
-  if (!value) return '';
-
-  const dateOnlyMatch = value.match(/^(\d{4})(\d{2})(\d{2})$/);
-  if (dateOnlyMatch) {
-    const [, year, month, day] = dateOnlyMatch;
-    const parsed = new Date(Number(year), Number(month) - 1, Number(day));
-    return parsed.toLocaleDateString();
-  }
-
-  const dateTimeMatch = value.match(
-    /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z)?$/,
-  );
-  if (dateTimeMatch) {
-    const [, year, month, day, hour, minute, second, isUtc] = dateTimeMatch;
-    const parsed = isUtc
-      ? new Date(
-          Date.UTC(
-            Number(year),
-            Number(month) - 1,
-            Number(day),
-            Number(hour),
-            Number(minute),
-            Number(second),
-          ),
-        )
-      : new Date(
-          Number(year),
-          Number(month) - 1,
-          Number(day),
-          Number(hour),
-          Number(minute),
-          Number(second),
-        );
-    return parsed.toLocaleString();
-  }
-
-  return decodeIcsText(value);
-};
-
-const readIcsField = (ics: string, field: string) => {
-  const pattern = new RegExp(`^${field}(?:;[^:]*)?:(.+)$`, 'im');
-  const match = ics.match(pattern);
-  return match?.[1]?.trim() || '';
-};
-
-const parseEventDetailsFromText = (content: string): EventDetails | null => {
-  const normalized = String(content || '')
-    .replace(/\r\n/g, '\n')
-    .replace(/\n[ \t]/g, '');
-  if (!normalized.trim()) return null;
-
-  const summary = decodeIcsText(readIcsField(normalized, 'SUMMARY'));
-  const location = decodeIcsText(readIcsField(normalized, 'LOCATION'));
-  const organizer = readOrganizer(readIcsField(normalized, 'ORGANIZER'));
-  const method = decodeIcsText(readIcsField(normalized, 'METHOD')).toUpperCase();
-  const start = parseIcsDate(readIcsField(normalized, 'DTSTART'));
-  const end = parseIcsDate(readIcsField(normalized, 'DTEND'));
-
-  const hasEventFields = !!(summary || location || organizer || start || end || method);
-  return hasEventFields
-    ? {
-        summary,
-        start,
-        end,
-        location,
-        organizer,
-        method,
-      }
-    : null;
-};
-
-const hasCalendarAttachment = (message?: MailMessage) =>
-  (message?.attachments || []).some(attachment => {
-    const contentType = String(attachment.contentType || '').toLowerCase();
-    const name = String(attachment.name || '').toLowerCase();
-    return contentType.includes('text/calendar') || name.endsWith('.ics');
-  });
-
-const isEventMessage = (message?: MailMessage) => {
-  if (!message) return false;
-  const bodyContent = `${message.text || ''}\n${stripHtml(message.html || '')}`
-    .toLowerCase();
-  const hasBodyMarkers = EVENT_MARKERS.some(marker => bodyContent.includes(marker));
-  return hasBodyMarkers || hasCalendarAttachment(message);
-};
-
-const getEventDetails = (message?: MailMessage) => {
-  if (!message) return null;
-  const sources = [message.text || '', stripHtml(message.html || '')].filter(Boolean);
-  for (const source of sources) {
-    const parsed = parseEventDetailsFromText(source);
-    if (parsed) return parsed;
-  }
-  return null;
-};
-
-const getDisplayBody = (message?: MailMessage) => {
-  if (!message) return 'No content found.';
-  const textBody = message.text?.trim();
-  if (textBody) return textBody;
-  const htmlBody = message.html?.trim();
-  if (!htmlBody) return 'No content found.';
-  const stripped = stripHtml(htmlBody);
-  return stripped || 'No content found.';
-};
-
-const formatDate = (value?: string | number) => {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return '';
-  return new Date(parsed).toLocaleString();
-};
-
-const extractSoapBody = (data: any) =>
-  Array.isArray(data?.Body) ? data.Body[0] : data?.Body;
-
-const extractSoapFault = (body: any) =>
-  Array.isArray(body?.Fault) ? body.Fault[0] : body?.Fault;
-
-const extractSoapResponse = (body: any, requestName: string) => {
-  const responseName = requestName.replace(/Request$/, 'Response');
-  const response = body?.[responseName];
-  return Array.isArray(response) ? response[0] : response;
-};
-
-const readTextContent = (value: unknown) => {
-  if (typeof value === 'string') return value;
-  if (value && typeof value === 'object') {
-    const content = (value as { _content?: unknown })._content;
-    if (typeof content === 'string') return content;
-  }
-  return '';
-};
-
-const extractMessageParts = (rawMessage: any) => {
-  let text = '';
-  let html = '';
-  const attachments: MailAttachment[] = [];
-
-  const walk = (parts: any[]) => {
-    parts.forEach(part => {
-      const contentType = String(part?.ct || part?.contentType || '').toLowerCase();
-      const disposition = String(part?.cd || part?.contentDisposition || '').toLowerCase();
-      const content = readTextContent(part?.content);
-      const childParts = toArray(part?.mp ?? part?.mimePart ?? part?.mimeParts);
-
-      if (!text && contentType.startsWith('text/plain') && content) {
-        text = content;
-      }
-      if (!html && contentType.startsWith('text/html') && content) {
-        html = content;
-      }
-
-      if (disposition.includes('attachment') || disposition.includes('inline')) {
-        attachments.push({
-          name: part?.filename || part?.name,
-          size: toNumber(part?.s ?? part?.size, 0),
-          contentType: part?.ct || part?.contentType,
-          part: part?.part,
-        });
-      }
-
-      if (childParts.length) walk(childParts);
-    });
-  };
-
-  walk(toArray(rawMessage?.mp ?? rawMessage?.mimePart ?? rawMessage?.mimeParts));
-  return { text, html, attachments };
-};
-
-const parseSoapMessage = (rawMessage: any): MailMessage => {
-  const parsed = extractMessageParts(rawMessage);
-  return {
-    id: String(rawMessage?.id ?? ''),
-    subject: rawMessage?.su ?? rawMessage?.subject,
-    flags: rawMessage?.f ?? rawMessage?.flags,
-    html: parsed.html || readTextContent(rawMessage?.html),
-    text: parsed.text || readTextContent(rawMessage?.text),
-    attachments: parsed.attachments,
-  };
-};
-
-const parseSoapConversation = (rawConversation: any): MailConversation => ({
-  id: String(rawConversation?.id ?? ''),
-  subject: rawConversation?.su ?? rawConversation?.subject,
-  flags: rawConversation?.f ?? rawConversation?.flags,
-  unread: toNumber(rawConversation?.u ?? rawConversation?.unread, 0),
-  messages: toArray(rawConversation?.m ?? rawConversation?.messages).map(
-    parseSoapMessage,
-  ),
-});
+} from '../graphql/mutations';
+import {
+  fetchConversationViaSoap,
+  fetchMailPreferencesViaSoap,
+  fetchMessageViaSoap,
+  markReadViaSoap,
+  sendDeliveryReportViaSoap,
+} from '../SOAP/viewMailApi';
+import type {
+  MailAttachment,
+  MailConversation,
+  MailMessage,
+  MailPreferences,
+} from '../SOAP/viewMailApi';
+import {
+  COLORS,
+  DEFAULT_PREFERENCES,
+  ErrorState,
+  formatDate,
+  getDisplayBody,
+  getEventDetails,
+  hasCalendarAttachment,
+  HEADER_INPUT,
+  isEventMessage,
+  isGraphqlSchemaUnsupported,
+  isUnreadByFlags,
+  LoadingState,
+  MAX_BODY_SIZE,
+  normalizePreferences,
+} from './shared';
+import type { EventDetails, RawGraphqlPreferences } from './shared';
 
 const ViewMail: React.FC = () => {
   const client = useApolloClient();
@@ -388,59 +82,6 @@ const ViewMail: React.FC = () => {
     }
   };
 
-  const soapRequest = useCallback(
-    async <TResponse,>(
-      requestName: string,
-      bodyPayload: Record<string, unknown>,
-      ns: 'urn:zimbraMail' | 'urn:zimbraAccount' = 'urn:zimbraMail',
-    ): Promise<TResponse> => {
-      const token = getToken(authToken);
-      if (!token) {
-        throw new Error('Missing auth token. Please login again.');
-      }
-
-      const payload = {
-        Header: {
-          context: {
-            _jsns: 'urn:zimbra',
-            authToken: token,
-          },
-        },
-        Body: {
-          [requestName]: {
-            _jsns: ns,
-            ...bodyPayload,
-          },
-        },
-      };
-
-      const response = await fetch(`${BASE_URL}/service/soap/${requestName}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          Authorization: `Bearer ${token}`,
-          Cookie: `ZM_AUTH_TOKEN=${token};`,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await response.json();
-      const body = extractSoapBody(data);
-      const fault = extractSoapFault(body);
-
-      if (!response.ok || fault) {
-        const reason = Array.isArray(fault?.Reason)
-          ? fault.Reason?.[0]?.Text
-          : fault?.Reason?.Text;
-        throw new Error(reason || `${requestName} failed (${response.status})`);
-      }
-
-      return extractSoapResponse(body, requestName) as TResponse;
-    },
-    [authToken],
-  );
-
   const performMarkRead = useCallback(
     async (
       actionType: 'MsgAction' | 'ConvAction',
@@ -472,14 +113,7 @@ const ViewMail: React.FC = () => {
         }
 
         if (useSoapOnlyRef.current) {
-          const requestName =
-            actionType === 'MsgAction' ? 'MsgActionRequest' : 'ConvActionRequest';
-          await soapRequest(requestName, {
-            action: {
-              id: targetId,
-              op: 'read',
-            },
-          });
+          await markReadViaSoap(authToken, actionType, targetId);
         }
 
         if (
@@ -502,9 +136,7 @@ const ViewMail: React.FC = () => {
           }
 
           if (useSoapOnlyRef.current) {
-            await soapRequest('SendDeliveryReportRequest', {
-              mid: readReceiptMessageId,
-            });
+            await sendDeliveryReportViaSoap(authToken, readReceiptMessageId);
           }
         }
 
@@ -518,7 +150,7 @@ const ViewMail: React.FC = () => {
         }
       }
     },
-    [client, route.params?.sendReadReceipt, soapRequest],
+    [authToken, client, route.params?.sendReadReceipt],
   );
 
   const scheduleMarkRead = useCallback(
@@ -571,11 +203,7 @@ const ViewMail: React.FC = () => {
     if (!useSoapOnlyRef.current) {
       try {
         const preferenceResponse = await client.query<{
-          getPreferences?: {
-            zimbraPrefMessageViewHtmlPreferred?: boolean | string;
-            zimbraPrefMarkMsgRead?: number | string;
-            zimbraPrefMailSendReadReceipts?: string;
-          };
+          getPreferences?: RawGraphqlPreferences;
         }>({
           query: GET_PREFERENCES_QUERY,
           fetchPolicy: 'network-only',
@@ -583,19 +211,7 @@ const ViewMail: React.FC = () => {
 
         const rawPreferences = preferenceResponse.data?.getPreferences;
         if (rawPreferences) {
-          return {
-            zimbraPrefMessageViewHtmlPreferred: toBooleanPreference(
-              rawPreferences.zimbraPrefMessageViewHtmlPreferred,
-              DEFAULT_PREFERENCES.zimbraPrefMessageViewHtmlPreferred,
-            ),
-            zimbraPrefMarkMsgRead: toNumberPreference(
-              rawPreferences.zimbraPrefMarkMsgRead,
-              DEFAULT_PREFERENCES.zimbraPrefMarkMsgRead,
-            ),
-            zimbraPrefMailSendReadReceipts: String(
-              rawPreferences.zimbraPrefMailSendReadReceipts || 'prompt',
-            ).toLowerCase(),
-          };
+          return normalizePreferences(rawPreferences);
         }
       } catch (graphqlError) {
         if (!isGraphqlSchemaUnsupported(graphqlError)) {
@@ -605,40 +221,8 @@ const ViewMail: React.FC = () => {
       }
     }
 
-    const getPrefsResponse = await soapRequest<any>(
-      'GetPrefsRequest',
-      {
-        pref: [
-          { name: 'zimbraPrefMessageViewHtmlPreferred' },
-          { name: 'zimbraPrefMarkMsgRead' },
-          { name: 'zimbraPrefMailSendReadReceipts' },
-        ],
-      },
-      'urn:zimbraAccount',
-    );
-    const prefEntries = toArray(getPrefsResponse?.pref);
-
-    const prefMap: Record<string, unknown> = {};
-    prefEntries.forEach((entry: any) => {
-      const name = entry?._name ?? entry?.name;
-      const value = entry?._content ?? entry?.value ?? entry?.content;
-      if (name) prefMap[String(name)] = value;
-    });
-
-    return {
-      zimbraPrefMessageViewHtmlPreferred: toBooleanPreference(
-        prefMap.zimbraPrefMessageViewHtmlPreferred,
-        DEFAULT_PREFERENCES.zimbraPrefMessageViewHtmlPreferred,
-      ),
-      zimbraPrefMarkMsgRead: toNumberPreference(
-        prefMap.zimbraPrefMarkMsgRead,
-        DEFAULT_PREFERENCES.zimbraPrefMarkMsgRead,
-      ),
-      zimbraPrefMailSendReadReceipts: String(
-        prefMap.zimbraPrefMailSendReadReceipts || 'prompt',
-      ).toLowerCase(),
-    };
-  }, [client, soapRequest]);
+    return fetchMailPreferencesViaSoap(authToken, DEFAULT_PREFERENCES);
+  }, [authToken, client]);
 
   const loadMail = useCallback(async () => {
     if (!itemId) {
@@ -686,20 +270,13 @@ const ViewMail: React.FC = () => {
         }
 
         if (useSoapOnlyRef.current) {
-          const getConvResponse = await soapRequest<any>('GetConvRequest', {
-            c: {
-              id: itemId,
-              fetch: 'all',
-              html: preferences.zimbraPrefMessageViewHtmlPreferred ? 1 : 0,
-              header: HEADER_INPUT,
-              needExp: 1,
-              max: MAX_BODY_SIZE,
-            },
-          });
-          const rawConversation = toArray(getConvResponse?.c)[0];
-          loadedConversation = rawConversation
-            ? parseSoapConversation(rawConversation)
-            : null;
+          loadedConversation = await fetchConversationViaSoap(
+            authToken,
+            itemId,
+            preferences.zimbraPrefMessageViewHtmlPreferred,
+            MAX_BODY_SIZE,
+            HEADER_INPUT,
+          );
         }
 
         if (!loadedConversation?.id) {
@@ -749,19 +326,13 @@ const ViewMail: React.FC = () => {
         }
 
         if (useSoapOnlyRef.current) {
-          const getMsgResponse = await soapRequest<any>('GetMsgRequest', {
-            m: {
-              id: itemId,
-              html: preferences.zimbraPrefMessageViewHtmlPreferred ? 1 : 0,
-              header: HEADER_INPUT,
-              needExp: 1,
-              neuter: 0,
-              max: MAX_BODY_SIZE,
-              raw: 0,
-            },
-          });
-          const rawMessage = toArray(getMsgResponse?.m)[0];
-          loadedMessage = rawMessage ? parseSoapMessage(rawMessage) : null;
+          loadedMessage = await fetchMessageViaSoap(
+            authToken,
+            itemId,
+            preferences.zimbraPrefMessageViewHtmlPreferred,
+            MAX_BODY_SIZE,
+            HEADER_INPUT,
+          );
         }
 
         if (!loadedMessage?.id) {
@@ -787,6 +358,7 @@ const ViewMail: React.FC = () => {
       if (isMountedRef.current) setLoading(false);
     }
   }, [
+    authToken,
     client,
     itemId,
     loadPreferences,
@@ -843,40 +415,40 @@ const ViewMail: React.FC = () => {
             body.
           </Text>
         )}
-        {!!details.summary && (
+        {!!details?.summary && (
           <Text style={styles.eventLine}>
             <Text style={styles.eventKey}>Title: </Text>
-            {details.summary}
+            {details?.summary}
           </Text>
         )}
-        {!!details.start && (
+        {!!details?.start && (
           <Text style={styles.eventLine}>
             <Text style={styles.eventKey}>Starts: </Text>
-            {details.start}
+            {details?.start}
           </Text>
         )}
-        {!!details.end && (
+        {!!details?.end && (
           <Text style={styles.eventLine}>
             <Text style={styles.eventKey}>Ends: </Text>
-            {details.end}
+            {details?.end}
           </Text>
         )}
-        {!!details.location && (
+        {!!details?.location && (
           <Text style={styles.eventLine}>
             <Text style={styles.eventKey}>Location: </Text>
-            {details.location}
+            {details?.location}
           </Text>
         )}
-        {!!details.organizer && (
+        {!!details?.organizer && (
           <Text style={styles.eventLine}>
             <Text style={styles.eventKey}>Organizer: </Text>
-            {details.organizer}
+            {details?.organizer}
           </Text>
         )}
-        {!!details.method && (
+        {!!details?.method && (
           <Text style={styles.eventLine}>
             <Text style={styles.eventKey}>Type: </Text>
-            {details.method}
+            {details?.method}
           </Text>
         )}
       </View>
@@ -929,17 +501,17 @@ const ViewMail: React.FC = () => {
       </View>
 
       {loading ? (
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color="#1f6feb" />
-          <Text style={styles.subtitle}>Loading full mail content...</Text>
-        </View>
+        <LoadingState
+          message="Loading full mail content..."
+          spinnerColor={COLORS.primaryBlue}
+        />
       ) : error ? (
-        <View style={styles.centered}>
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={() => void loadMail()}>
-            <Text style={styles.retryButtonText}>Retry</Text>
-          </TouchableOpacity>
-        </View>
+        <ErrorState
+          message={error}
+          onRetry={() => void loadMail()}
+          retryLabel="Retry"
+          accentColor={COLORS.primaryBlue}
+        />
       ) : (
         <ScrollView contentContainerStyle={styles.content}>
           {viewType === 'conversation'
@@ -956,11 +528,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f5f7fb',
     padding: 14,
-  },
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   headerCard: {
     backgroundColor: '#fff',
@@ -986,11 +553,6 @@ const styles = StyleSheet.create({
     color: '#0369a1',
     fontSize: 13,
     fontWeight: '600',
-  },
-  subtitle: {
-    fontSize: 15,
-    color: '#555',
-    marginTop: 10,
   },
   content: {
     paddingBottom: 18,
@@ -1065,23 +627,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1f2937',
     marginBottom: 8,
-  },
-  errorText: {
-    color: '#c62828',
-    fontSize: 15,
-    textAlign: 'center',
-    marginBottom: 12,
-  },
-  retryButton: {
-    backgroundColor: '#1f6feb',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  retryButtonText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 15,
   },
 });
 

@@ -1,9 +1,6 @@
 # dependencies
 ZimbraLoginApp/node_modules/
 
-# repo-level docs/locks
-README.md
-
 # CocoaPods
 ZimbraLoginApp/ios/Pods/
 
@@ -15,6 +12,7 @@ ZimbraLoginApp/android/app/.cxx/
 
 # iOS
 ZimbraLoginApp/ios/build/
+ZimbraLoginApp/ios/DerivedData/
 
 # Metro
 ZimbraLoginApp/.metro/
@@ -29,3 +27,9 @@ ZimbraLoginApp/build/
 # macOS
 .DS_Store
 **/.DS_Store
+
+# Logs
+*.log
+
+# Optional (usually KEEP this tracked)
+# ZimbraLoginApp/package-lock.json

@@ -3,8 +3,6 @@ import type {
   FolderItem,
   MailFoldersResult,
   MailListDataResult,
-  MailListItem,
-  TagMeta,
 } from './types';
 
 /**
@@ -51,42 +49,6 @@ const mapFolder = (raw: any): FolderItem => ({
   nonFolderItemCountTotal: toNumber(raw?.nonFolderItemCountTotal ?? raw?.s),
   unreadDescendent: toNumber(raw?.unreadDescendent),
 });
-
-/**
- * Builds `tagId -> tag metadata` map from `GetTagResponse`.
- *
- * Color may come from different fields depending on server version:
- * `rgb`, `rgbColor`, `color`, or `c`.
- */
-const buildTagMap = (response: any): Record<string, TagMeta> => {
-  const queue: unknown[] = toList(response?.tag ?? response?.tags);
-  const tagMap: Record<string, TagMeta> = {};
-
-  while (queue.length) {
-    const current = queue.shift();
-    if (!current || typeof current !== 'object') continue;
-
-    const rawTag = current as Record<string, unknown>;
-    const id = String(rawTag.id ?? '').trim();
-    const name = String(rawTag.name ?? rawTag.n ?? '').trim();
-
-    if (id && name) {
-      tagMap[id] = {
-        name,
-        color:
-          (rawTag.rgb as string | number | undefined) ??
-          (rawTag.rgbColor as string | number | undefined) ??
-          (rawTag.color as string | number | undefined) ??
-          (rawTag.c as string | number | undefined),
-      };
-    }
-
-    queue.push(...toList(rawTag.tag as unknown));
-    queue.push(...toList(rawTag.tags as unknown));
-  }
-
-  return tagMap;
-};
 
 /**
  * Loads folders for MailFolders screen.
@@ -141,16 +103,12 @@ const fetchMailFolders = async (
 /**
  * Loads mail list data for MailList screen.
  *
- * SOAP calls:
- * - `SearchRequest` for mail/conversation list
- * - `GetTagRequest` for tag names/colors (best-effort)
- *
- * If tag request fails, the function still returns list items and an empty `tagMap`.
+ * SOAP call: `SearchRequest` for mail/conversation list.
  *
  * @param authToken User/session token from auth store.
  * @param folderId Mail folder ID (`inid:<folderId>` search query).
  * @param limit Max items requested from SearchRequest.
- * @returns Items (sorted newest first) + tag map.
+ * @returns Items (sorted newest first).
  */
 const fetchMailListData = async (
   authToken: unknown,
@@ -159,26 +117,19 @@ const fetchMailListData = async (
 ): Promise<MailListDataResult> => {
   const token = requireToken(authToken);
 
-  const [searchResponse, tagResponse] = await Promise.all([
-    callSoapApi<any>({
-      authToken: token,
-      requestName: 'SearchRequest',
-      bodyPayload: {
-        query: `inid:${folderId}`,
-        types: 'conversation',
-        limit,
-        offset: 0,
-        sortBy: 'dateDesc',
-        fullConversation: true,
-        needExp: true,
-      },
-    }),
-    callSoapApi<any>({
-      authToken: token,
-      requestName: 'GetTagRequest',
-      bodyPayload: {},
-    }).catch(() => null),
-  ]);
+  const searchResponse = await callSoapApi<any>({
+    authToken: token,
+    requestName: 'SearchRequest',
+    bodyPayload: {
+      query: `inid:${folderId}`,
+      types: 'conversation',
+      limit,
+      offset: 0,
+      sortBy: 'dateDesc',
+      fullConversation: true,
+      needExp: true,
+    },
+  });
 
   const conversationItems = toList(searchResponse?.c).map(item => ({
     ...item,
@@ -194,9 +145,7 @@ const fetchMailListData = async (
     (a, b) => Number(b?.d ?? 0) - Number(a?.d ?? 0),
   );
 
-  const tagMap = tagResponse ? buildTagMap(tagResponse) : {};
-
-  return { items, tagMap };
+  return { items };
 };
 
 // Public SOAP API methods (single export block for API calls).
