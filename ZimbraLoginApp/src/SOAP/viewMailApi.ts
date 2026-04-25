@@ -2,9 +2,14 @@ import { callSoapApi } from './api';
 
 export type MailAttachment = {
   name?: string;
+  filename?: string;
   size?: number;
   contentType?: string;
+  contentDisposition?: string;
   part?: string;
+  messageId?: string;
+  url?: string;
+  truncated?: boolean;
 };
 
 export type MailMessage = {
@@ -84,11 +89,16 @@ const extractMessageParts = (rawMessage: any) => {
       }
 
       if (disposition.includes('attachment') || disposition.includes('inline')) {
+        const filename = part?.filename || part?.name;
         attachments.push({
-          name: part?.filename || part?.name,
+          name: filename,
+          filename,
           size: toNumber(part?.s ?? part?.size, 0),
           contentType: part?.ct || part?.contentType,
+          contentDisposition: part?.cd || part?.contentDisposition,
           part: part?.part,
+          url: part?.url,
+          truncated: !!part?.truncated,
         });
       }
 
@@ -102,13 +112,17 @@ const extractMessageParts = (rawMessage: any) => {
 
 const parseSoapMessage = (rawMessage: any): MailMessage => {
   const parsed = extractMessageParts(rawMessage);
+  const messageId = String(rawMessage?.id ?? '');
   return {
-    id: String(rawMessage?.id ?? ''),
+    id: messageId,
     subject: rawMessage?.su ?? rawMessage?.subject,
     flags: rawMessage?.f ?? rawMessage?.flags,
     html: parsed.html || readTextContent(rawMessage?.html),
     text: parsed.text || readTextContent(rawMessage?.text),
-    attachments: parsed.attachments,
+    attachments: parsed.attachments.map(attachment => ({
+      ...attachment,
+      messageId: attachment.messageId || messageId,
+    })),
   };
 };
 

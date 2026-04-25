@@ -1,4 +1,4 @@
-const BASE_URL = 'https://apps-development.zimbradev.com';
+export const BASE_URL = 'https://apps-development.zimbradev.com';
 
 type SoapNamespace = 'urn:zimbraMail' | 'urn:zimbraAccount' | string;
 

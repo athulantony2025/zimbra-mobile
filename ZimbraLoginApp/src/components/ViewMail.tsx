@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Linking,
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { useApolloClient } from '@apollo/client/react';
@@ -26,6 +28,7 @@ import {
   markReadViaSoap,
   sendDeliveryReportViaSoap,
 } from '../SOAP/viewMailApi';
+import { BASE_URL, getAuthToken } from '../SOAP/api';
 import type {
   MailAttachment,
   MailConversation,
@@ -50,6 +53,126 @@ import {
 } from './shared';
 import type { EventDetails, RawGraphqlPreferences } from './shared';
 
+type AttachmentBadge = {
+  backgroundColor: string;
+  label: string;
+  textColor: string;
+};
+
+const formatAttachmentSize = (size?: number) => {
+  const normalizedSize =
+    typeof size === 'number' && Number.isFinite(size) ? Math.max(size, 0) : 0;
+  if (normalizedSize < 1024) return `${normalizedSize} B`;
+  if (normalizedSize < 1024 * 1024) return `${(normalizedSize / 1024).toFixed(1)} KB`;
+  return `${(normalizedSize / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const getAttachmentName = (attachment: MailAttachment) =>
+  String(attachment.name || attachment.filename || '').trim();
+
+const getVisibleAttachments = (attachments?: MailAttachment[]) =>
+  (attachments || []).filter(attachment => getAttachmentName(attachment).length > 0);
+
+const getAttachmentExt = (name?: string) => {
+  const trimmed = String(name || '').trim().toLowerCase();
+  const dotIndex = trimmed.lastIndexOf('.');
+  if (dotIndex === -1 || dotIndex === trimmed.length - 1) return '';
+  return trimmed.slice(dotIndex + 1);
+};
+
+const getAttachmentBadge = (attachment: MailAttachment): AttachmentBadge => {
+  const contentType = String(attachment.contentType || '').toLowerCase();
+  const extension = getAttachmentExt(attachment.name || attachment.filename);
+
+  if (contentType.includes('pdf') || extension === 'pdf') {
+    return { label: 'PDF', backgroundColor: '#fee2e2', textColor: '#b91c1c' };
+  }
+  if (contentType.startsWith('image/') || ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(extension)) {
+    return { label: 'IMG', backgroundColor: '#d1fae5', textColor: '#065f46' };
+  }
+  if (
+    contentType.includes('spreadsheet') ||
+    contentType.includes('excel') ||
+    ['xls', 'xlsx', 'csv'].includes(extension)
+  ) {
+    return { label: 'XLS', backgroundColor: '#dcfce7', textColor: '#166534' };
+  }
+  if (
+    contentType.includes('presentation') ||
+    ['ppt', 'pptx', 'key'].includes(extension)
+  ) {
+    return { label: 'PPT', backgroundColor: '#ffedd5', textColor: '#9a3412' };
+  }
+  if (
+    contentType.includes('word') ||
+    ['doc', 'docx', 'rtf', 'odt'].includes(extension)
+  ) {
+    return { label: 'DOC', backgroundColor: '#dbeafe', textColor: '#1d4ed8' };
+  }
+  if (
+    contentType.includes('calendar') ||
+    contentType.includes('ics') ||
+    extension === 'ics'
+  ) {
+    return { label: 'ICS', backgroundColor: '#e0e7ff', textColor: '#3730a3' };
+  }
+  if (
+    contentType.includes('zip') ||
+    contentType.includes('compressed') ||
+    ['zip', 'rar', '7z', 'tar', 'gz'].includes(extension)
+  ) {
+    return { label: 'ZIP', backgroundColor: '#fef3c7', textColor: '#92400e' };
+  }
+  if (contentType.startsWith('audio/')) {
+    return { label: 'AUD', backgroundColor: '#fce7f3', textColor: '#9d174d' };
+  }
+  if (contentType.startsWith('video/')) {
+    return { label: 'VID', backgroundColor: '#ede9fe', textColor: '#5b21b6' };
+  }
+  return { label: 'FILE', backgroundColor: '#e5e7eb', textColor: '#374151' };
+};
+
+const buildAttachmentDownloadUrl = ({
+  token,
+  messageId,
+  part,
+}: {
+  token: string;
+  messageId: string;
+  part: string;
+}) => {
+  const params = new URLSearchParams({
+    auth: 'qp',
+    id: messageId,
+    part,
+    zauthtoken: token,
+    disp: 'a',
+  });
+  return `${BASE_URL}/service/home/~/?${params.toString()}`;
+};
+
+const dedupeConversationMessages = (messages?: MailMessage[]) => {
+  const seen = new Set<string>();
+  const unique: MailMessage[] = [];
+
+  (messages || []).forEach(message => {
+    const normalizedId = String(message?.id || '').trim();
+    const subject = String(message?.subject || '').trim().toLowerCase();
+    const preview = String(message?.text || message?.html || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 180)
+      .toLowerCase();
+    const dedupeKey = normalizedId || `${subject}|${preview}`;
+
+    if (dedupeKey && seen.has(dedupeKey)) return;
+    if (dedupeKey) seen.add(dedupeKey);
+    unique.push(message);
+  });
+
+  return unique;
+};
+
 const ViewMail: React.FC = () => {
   const client = useApolloClient();
   const authToken = useAppSelector(state => state.auth.authToken);
@@ -73,6 +196,38 @@ const ViewMail: React.FC = () => {
   const receivedAt = useMemo(
     () => formatDate(route.params?.timestamp),
     [route.params?.timestamp],
+  );
+
+  const handleDownloadAttachment = useCallback(
+    async (attachment: MailAttachment, fallbackMessageId?: string) => {
+      const token = getAuthToken(authToken);
+      const part = String(attachment.part || '').trim();
+      const messageId = String(attachment.messageId || fallbackMessageId || '').trim();
+      const filename = attachment.name || attachment.filename || 'attachment';
+
+      if (!token) {
+        setStatusNote('Unable to download attachment. Please login again.');
+        return;
+      }
+
+      if (!messageId || !part) {
+        setStatusNote(`Unable to download ${filename}. Missing attachment reference.`);
+        return;
+      }
+
+      try {
+        const downloadUrl = buildAttachmentDownloadUrl({
+          token,
+          messageId,
+          part,
+        });
+        await Linking.openURL(downloadUrl);
+        setStatusNote(`Download started for ${filename}.`);
+      } catch (err: any) {
+        setStatusNote(err?.message || `Unable to download ${filename}.`);
+      }
+    },
+    [authToken],
   );
 
   const clearReadTimer = () => {
@@ -283,13 +438,20 @@ const ViewMail: React.FC = () => {
           throw new Error('Conversation not found.');
         }
 
-        setConversation(loadedConversation);
+        const normalizedConversation: MailConversation = {
+          ...loadedConversation,
+          messages: dedupeConversationMessages(loadedConversation.messages),
+        };
+
+        setConversation(normalizedConversation);
         setMessage(null);
-        setSubject(loadedConversation.subject || route.params?.subject || '(No subject)');
+        setSubject(
+          normalizedConversation.subject || route.params?.subject || '(No subject)',
+        );
 
         const isUnread =
-          Number(loadedConversation.unread) > 0 ||
-          isUnreadByFlags(loadedConversation.flags) ||
+          Number(normalizedConversation.unread) > 0 ||
+          isUnreadByFlags(normalizedConversation.flags) ||
           !!route.params?.unread;
 
         await scheduleMarkRead(
@@ -377,25 +539,62 @@ const ViewMail: React.FC = () => {
     };
   }, [loadMail]);
 
-  const renderAttachments = (attachments?: MailAttachment[]) => {
-    if (!attachments?.length) return null;
+  const renderAttachments = (attachments?: MailAttachment[], messageId?: string) => {
+    const visibleAttachments = getVisibleAttachments(attachments);
+    if (!visibleAttachments.length) return null;
 
     return (
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Attachments ({attachments.length})</Text>
-        {attachments.map((attachment, index) => (
-          <View
-            key={`${attachment.part || attachment.name || 'attachment'}-${index}`}
-            style={styles.attachmentRow}
-          >
-            <Text style={styles.attachmentName} numberOfLines={1}>
-              {attachment.name || 'Unnamed attachment'}
-            </Text>
-            <Text style={styles.attachmentMeta}>
-              {attachment.contentType || 'unknown'} | {attachment.size ?? 0} bytes
-            </Text>
-          </View>
-        ))}
+        <Text style={styles.sectionTitle}>Attachments ({visibleAttachments.length})</Text>
+        {visibleAttachments.map((attachment, index) => {
+          const badge = getAttachmentBadge(attachment);
+          const canDownload = !!(
+            String(attachment.part || '').trim() &&
+            String(attachment.messageId || messageId || '').trim()
+          );
+
+          return (
+            <TouchableOpacity
+              key={`${attachment.part || attachment.name || 'attachment'}-${index}`}
+              style={[
+                styles.attachmentRow,
+                !canDownload && styles.attachmentRowDisabled,
+              ]}
+              activeOpacity={0.75}
+              disabled={!canDownload}
+              onPress={() => void handleDownloadAttachment(attachment, messageId)}
+            >
+              <View
+                style={[
+                  styles.attachmentBadge,
+                  { backgroundColor: badge.backgroundColor },
+                ]}
+              >
+                <Text
+                  style={[styles.attachmentBadgeText, { color: badge.textColor }]}
+                >
+                  {badge.label}
+                </Text>
+              </View>
+              <View style={styles.attachmentInfo}>
+                <Text style={styles.attachmentName} numberOfLines={1}>
+                  {getAttachmentName(attachment)}
+                </Text>
+                <Text style={styles.attachmentMeta}>
+                  {attachment.contentType || 'unknown'} | {formatAttachmentSize(attachment.size)}
+                </Text>
+              </View>
+              <Text
+                style={[
+                  styles.attachmentAction,
+                  !canDownload && styles.attachmentActionDisabled,
+                ]}
+              >
+                {canDownload ? 'Download' : 'Unavailable'}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
     );
   };
@@ -464,12 +663,29 @@ const ViewMail: React.FC = () => {
           hasCalendarAttachment(message || undefined),
         )}
       <Text style={styles.bodyText}>{getDisplayBody(message || undefined)}</Text>
-      {renderAttachments(message?.attachments)}
+      {renderAttachments(message?.attachments, message?.id)}
     </View>
   );
 
   const renderConversationContent = () => {
-    const messages = conversation?.messages || [];
+    const messages = dedupeConversationMessages(conversation?.messages);
+
+    if (messages.length <= 1) {
+      const threadMessage = messages[0];
+      return (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Body</Text>
+          {isEventMessage(threadMessage) &&
+            renderEventDetails(
+              getEventDetails(threadMessage),
+              hasCalendarAttachment(threadMessage),
+            )}
+          <Text style={styles.bodyText}>{getDisplayBody(threadMessage)}</Text>
+          {renderAttachments(threadMessage?.attachments, threadMessage?.id)}
+        </View>
+      );
+    }
+
     return (
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Thread Messages ({messages.length})</Text>
@@ -484,7 +700,7 @@ const ViewMail: React.FC = () => {
                 hasCalendarAttachment(threadMessage),
               )}
             <Text style={styles.bodyText}>{getDisplayBody(threadMessage)}</Text>
-            {renderAttachments(threadMessage.attachments)}
+            {renderAttachments(threadMessage.attachments, threadMessage.id)}
           </View>
         ))}
       </View>
@@ -604,6 +820,26 @@ const styles = StyleSheet.create({
     borderTopColor: '#edf1f7',
     paddingTop: 10,
     marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  attachmentRowDisabled: {
+    opacity: 0.6,
+  },
+  attachmentBadge: {
+    width: 44,
+    height: 30,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attachmentBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  attachmentInfo: {
+    flex: 1,
   },
   attachmentName: {
     fontSize: 14,
@@ -614,6 +850,14 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontSize: 12,
     color: '#6b7280',
+  },
+  attachmentAction: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0369a1',
+  },
+  attachmentActionDisabled: {
+    color: '#9ca3af',
   },
   threadCard: {
     borderWidth: 1,
