@@ -1,6 +1,0 @@
-export {
-  GET_CONVERSATION_QUERY,
-  GET_MESSAGE_QUERY,
-  GET_PREFERENCES_QUERY,
-} from './query';
-export { MARK_READ_MUTATION, SEND_DELIVERY_REPORT_MUTATION } from './mutations';

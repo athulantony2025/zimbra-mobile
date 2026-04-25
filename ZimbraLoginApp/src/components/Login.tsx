@@ -146,97 +146,100 @@ const Login: React.FC = () => {
     setTrustedDeviceToken(null);
   };
 
+  // UI for the initial credentials screen (username/password).
+  const loginScreenUI = (
+    <>
+      <View style={styles.inputContainer}>
+        <Text style={styles.label}>Username/Email:</Text>
+        <TextInput
+          style={styles.input}
+          value={username}
+          onChangeText={setUsername}
+          placeholder="Enter username or email"
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="email-address"
+          editable={!loading}
+        />
+      </View>
+
+      <View style={styles.inputContainer}>
+        <Text style={styles.label}>Password:</Text>
+        <View style={styles.passwordRow}>
+          <TextInput
+            style={[styles.input, styles.passwordInput]}
+            value={password}
+            onChangeText={setPassword}
+            placeholder="Enter password"
+            secureTextEntry={!showPassword}
+            editable={!loading}
+          />
+          <TouchableOpacity
+            style={styles.eyeButton}
+            onPress={() => setShowPassword(prev => !prev)}
+            disabled={loading}
+          >
+            <Text style={styles.eyeText}>{showPassword ? 'Hide' : 'Show'}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <TouchableOpacity
+        style={[styles.button, loading && styles.buttonDisabled]}
+        onPress={handleLogin}
+        disabled={loading}
+      >
+        {loading ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.buttonText}>Login</Text>
+        )}
+      </TouchableOpacity>
+    </>
+  );
+
+  // UI for two-factor authentication verification.
+  const twoFactorScreenUI = (
+    <>
+      <View style={styles.inputContainer}>
+        <Text style={styles.label}>Two-factor code</Text>
+        <TextInput
+          style={styles.input}
+          value={twoFactorCode}
+          onChangeText={setTwoFactorCode}
+          placeholder="Enter 6-digit code"
+          keyboardType="number-pad"
+          maxLength={6}
+          editable={!loading}
+        />
+      </View>
+
+      <TouchableOpacity
+        style={[styles.button, loading && styles.buttonDisabled]}
+        onPress={handle2FA}
+        disabled={loading}
+      >
+        {loading ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.buttonText}>Verify 2FA</Text>
+        )}
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.linkButton, loading && styles.buttonDisabled]}
+        onPress={handleReset}
+        disabled={loading}
+      >
+        <Text style={styles.linkText}>Back to login</Text>
+      </TouchableOpacity>
+    </>
+  );
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Zimbra Login</Text>
-
-      {!twoFactorRequired ? (
-        <>
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Username/Email:</Text>
-            <TextInput
-              style={styles.input}
-              value={username}
-              onChangeText={setUsername}
-              placeholder="Enter username or email"
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="email-address"
-              editable={!loading}
-            />
-          </View>
-
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Password:</Text>
-            <View style={styles.passwordRow}>
-              <TextInput
-                style={[styles.input, styles.passwordInput]}
-                value={password}
-                onChangeText={setPassword}
-                placeholder="Enter password"
-                secureTextEntry={!showPassword}
-                editable={!loading}
-              />
-              <TouchableOpacity
-                style={styles.eyeButton}
-                onPress={() => setShowPassword(prev => !prev)}
-                disabled={loading}
-              >
-                <Text style={styles.eyeText}>
-                  {showPassword ? 'Hide' : 'Show'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <TouchableOpacity
-            style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={handleLogin}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>Login</Text>
-            )}
-          </TouchableOpacity>
-        </>
-      ) : (
-        <>
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Two-factor code</Text>
-            <TextInput
-              style={styles.input}
-              value={twoFactorCode}
-              onChangeText={setTwoFactorCode}
-              placeholder="Enter 6-digit code"
-              keyboardType="number-pad"
-              maxLength={6}
-              editable={!loading}
-            />
-          </View>
-
-          <TouchableOpacity
-            style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={handle2FA}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>Verify 2FA</Text>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.linkButton, loading && styles.buttonDisabled]}
-            onPress={handleReset}
-            disabled={loading}
-          >
-            <Text style={styles.linkText}>Back to login</Text>
-          </TouchableOpacity>
-        </>
-      )}
+      {twoFactorRequired ? twoFactorScreenUI : loginScreenUI}
     </View>
   );
 };

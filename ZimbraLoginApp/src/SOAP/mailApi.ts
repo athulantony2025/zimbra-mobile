@@ -19,7 +19,7 @@ export const DEFAULT_SEARCH_LIMIT = 10000;
 // -----------------------------
 
 /** Ensures SOAP fields are always handled as arrays. */
-const toList = <T,>(value?: T | T[] | null): T[] => {
+const toList = <T>(value?: T | T[] | null): T[] => {
   if (!value) return [];
   return Array.isArray(value) ? value : [value];
 };
@@ -39,7 +39,9 @@ const requireToken = (authToken: unknown) => {
 
 /** Maps raw folder SOAP object into UI-friendly `FolderItem`. */
 const mapFolder = (raw: any): FolderItem => ({
-  id: String(raw?.id ?? raw?.absFolderPath ?? raw?.path ?? raw?.name ?? 'folder'),
+  id: String(
+    raw?.id ?? raw?.absFolderPath ?? raw?.path ?? raw?.name ?? 'folder',
+  ),
   name: raw?.name ?? 'Unnamed folder',
   absFolderPath: raw?.absFolderPath ?? raw?.path ?? '',
   parentFolderId: String(raw?.parentFolderId ?? raw?.l ?? ''),
@@ -141,9 +143,9 @@ const fetchMailListData = async (
     _viewType: 'message' as const,
   }));
 
-  const items = (conversationItems.length ? conversationItems : messageItems).sort(
-    (a, b) => Number(b?.d ?? 0) - Number(a?.d ?? 0),
-  );
+  const items = (
+    conversationItems.length ? conversationItems : messageItems
+  ).sort((a, b) => Number(b?.d ?? 0) - Number(a?.d ?? 0));
 
   return { items };
 };
