@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,7 @@ import { useAppSelector } from '../store/hooks';
 import store from '../store/store';
 import type { MainStackParamList } from '../navigation/types';
 import { DEFAULT_SEARCH_LIMIT, fetchMailListData } from '../SOAP/mailApi';
-import type { MailListItem as InboxItem } from '../SOAP/types';
+import type { MailListItem as InboxItem, MailTag } from '../SOAP/types';
 import {
   ActionButton,
   COLORS,
@@ -25,6 +25,19 @@ import {
   sharedStyles,
 } from './shared';
 const LIMIT = DEFAULT_SEARCH_LIMIT;
+// Zimbra tag color index mapping (fallback when `rgb` is not provided).
+const COLOR_BY_INDEX: Record<number, string> = {
+  0: '#9ca3af', // none/default
+  1: '#3b82f6', // blue
+  2: '#06b6d4', // cyan
+  3: '#22c55e', // green
+  4: '#a855f7', // purple
+  5: '#ef4444', // red
+  6: '#f59e0b', // yellow
+  7: '#ec4899', // pink
+  8: '#9ca3af', // gray
+  9: '#f97316', // orange
+};
 
 const getSender = (item: InboxItem) =>
   item.e?.find(entry => entry?.t === 'f')?.p ||
@@ -33,6 +46,57 @@ const getSender = (item: InboxItem) =>
 
 const isUnread = (item: InboxItem) =>
   typeof item.f === 'string' ? item.f.includes('u') : false;
+
+const parseTagNames = (value?: string) => {
+  const source = String(value || '');
+  if (!source.trim()) return [] as string[];
+
+  const tags: string[] = [];
+  let current = '';
+  let escaped = false;
+
+  for (const char of source) {
+    if (escaped) {
+      current += char;
+      escaped = false;
+      continue;
+    }
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (char === ',') {
+      const normalized = current.trim();
+      if (normalized) tags.push(normalized);
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+
+  const tail = current.trim();
+  if (tail) tags.push(tail);
+  return tags;
+};
+
+const isHexColor = (value: string) => /^#(?:[0-9a-fA-F]{3}){1,2}$/.test(value);
+
+const normalizeHexColor = (value: string) => {
+  if (value.length === 7) return value;
+  return `#${value[1]}${value[1]}${value[2]}${value[2]}${value[3]}${value[3]}`;
+};
+
+const getTagBackgroundColor = (tag: MailTag) => {
+  const rgb = String(tag.rgb || '').trim();
+  if (isHexColor(rgb)) return normalizeHexColor(rgb);
+  return COLOR_BY_INDEX[tag.color] || '#9ca3af';
+};
+
+const getMailTagNames = (item: InboxItem) => {
+  if (typeof item.tagNames === 'string') return item.tagNames;
+  if (typeof item.tn === 'string') return item.tn;
+  return '';
+};
 
 const MailList = () => {
   const navigation =
@@ -43,9 +107,18 @@ const MailList = () => {
   const unreadCount = route.params?.unreadCount;
   const itemCount = route.params?.itemCount;
   const authToken = useAppSelector(state => state.auth.authToken);
+  const mailTags = useAppSelector(state => state.auth.mailTags);
   const [emails, setEmails] = useState<InboxItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const tagsByName = useMemo(() => {
+    const map: Record<string, MailTag> = {};
+    mailTags.forEach(tag => {
+      const key = tag.name.trim().toLowerCase();
+      if (key) map[key] = tag;
+    });
+    return map;
+  }, [mailTags]);
 
   const loadInbox = async () => {
     setLoading(true);
@@ -83,6 +156,9 @@ const MailList = () => {
     const date = Number.isFinite(timestamp)
       ? new Date(timestamp).toLocaleString()
       : '';
+    const tags = parseTagNames(getMailTagNames(item))
+      .map(name => tagsByName[name.toLowerCase()])
+      .filter((tag): tag is MailTag => !!tag);
 
     return (
       <TouchableOpacity
@@ -106,6 +182,26 @@ const MailList = () => {
         <Text style={styles.sender} numberOfLines={1}>
           From: {from}
         </Text>
+        {tags.length > 0 && (
+          <View style={styles.tagRow}>
+            {tags.map(tag => {
+              const backgroundColor = getTagBackgroundColor(tag);
+              return (
+                <View
+                  key={`${item.id ?? subject}-${tag.id}-${tag.name}`}
+                  style={[styles.tagPill, { backgroundColor }]}
+                >
+                  <Text
+                    style={styles.tagText}
+                    numberOfLines={1}
+                  >
+                    {tag.name}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        )}
         {!!date && <Text style={styles.date}>{date}</Text>}
       </TouchableOpacity>
     );
@@ -183,6 +279,24 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   sender: { fontSize: 14, color: '#374151', marginBottom: 4 },
+  tagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 6,
+    gap: 6,
+  },
+  tagPill: {
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.18)',
+  },
+  tagText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
   date: { fontSize: 12, color: '#6b7280' },
 });
 

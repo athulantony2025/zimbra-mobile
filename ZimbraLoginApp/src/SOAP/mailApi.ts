@@ -3,6 +3,8 @@ import type {
   FolderItem,
   MailFoldersResult,
   MailListDataResult,
+  MailTag,
+  MailTagsResult,
 } from './types';
 
 /**
@@ -11,6 +13,7 @@ import type {
  * Keep UI components simple by using only:
  * - `fetchMailFolders(authToken)`
  * - `fetchMailListData(authToken, folderId, limit?)`
+ * - `fetchMailTags(authToken)`
  */
 export const DEFAULT_SEARCH_LIMIT = 10000;
 
@@ -28,6 +31,52 @@ const toList = <T>(value?: T | T[] | null): T[] => {
 const toNumber = (value: unknown): number => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+};
+
+/** Reads SOAP scalar values that may come as string, number, or `{ _content }`. */
+const readSoapScalar = (value: unknown): string => {
+  if (typeof value === 'string' || typeof value === 'number') {
+    return String(value).trim();
+  }
+  if (value && typeof value === 'object') {
+    const content = (value as { _content?: unknown })._content;
+    if (typeof content === 'string' || typeof content === 'number') {
+      return String(content).trim();
+    }
+  }
+  return '';
+};
+
+/** Reads SOAP field using standard or underscore-prefixed key. */
+const readSoapField = (raw: any, key: string): string =>
+  readSoapScalar(raw?.[key] ?? raw?.[`_${key}`]);
+
+/** Converts SOAP RGB values into normalized 6-digit hex (`#rrggbb`). */
+const normalizeTagRgb = (value: unknown): string => {
+  const raw = readSoapScalar(value);
+  if (!raw) return '';
+
+  const prefixedHex = raw.match(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/);
+  if (prefixedHex) {
+    const hex = prefixedHex[1];
+    if (hex.length === 6) return `#${hex.toLowerCase()}`;
+    return `#${hex[0]}${hex[0]}${hex[1]}${hex[1]}${hex[2]}${hex[2]}`.toLowerCase();
+  }
+
+  const plainHex = raw.match(/^([0-9a-fA-F]{6})$/);
+  if (plainHex) return `#${plainHex[1].toLowerCase()}`;
+
+  const hexWithPrefix = raw.match(/^0x([0-9a-fA-F]{6})$/i);
+  if (hexWithPrefix) return `#${hexWithPrefix[1].toLowerCase()}`;
+
+  if (/^\d+$/.test(raw)) {
+    const decimal = Number(raw);
+    if (Number.isFinite(decimal) && decimal >= 0 && decimal <= 0xffffff) {
+      return `#${decimal.toString(16).padStart(6, '0')}`;
+    }
+  }
+
+  return '';
 };
 
 /** Normalizes and validates auth token before any SOAP call. */
@@ -51,6 +100,23 @@ const mapFolder = (raw: any): FolderItem => ({
   nonFolderItemCountTotal: toNumber(raw?.nonFolderItemCountTotal ?? raw?.s),
   unreadDescendent: toNumber(raw?.unreadDescendent),
 });
+
+/** Maps raw tag SOAP object into UI-friendly `MailTag`. */
+const mapTag = (raw: any): MailTag => {
+  const rgb = normalizeTagRgb(raw?.rgb ?? raw?._rgb);
+  const colorValue = readSoapField(raw, 'color');
+  const unreadValue = readSoapField(raw, 'unread') || readSoapField(raw, 'u');
+  const name = readSoapField(raw, 'name');
+  const id = readSoapField(raw, 'id');
+
+  return {
+    id,
+    name,
+    color: toNumber(colorValue),
+    rgb,
+    unread: toNumber(unreadValue),
+  };
+};
 
 /**
  * Loads folders for MailFolders screen.
@@ -150,5 +216,30 @@ const fetchMailListData = async (
   return { items };
 };
 
+/**
+ * Loads mailbox tag definitions for MailList rendering.
+ *
+ * SOAP call: `GetTagRequest`
+ * @param authToken User/session token from auth store.
+ * @returns Normalized tags keyed by name later in UI.
+ */
+const fetchMailTags = async (
+  authToken: unknown,
+): Promise<MailTagsResult> => {
+  const token = requireToken(authToken);
+
+  const response = await callSoapApi<any>({
+    authToken: token,
+    requestName: 'GetTagRequest',
+    bodyPayload: {},
+  });
+
+  const tags = toList(response?.tag)
+    .map(mapTag)
+    .filter(tag => tag.name.length > 0);
+
+  return { tags };
+};
+
 // Public SOAP API methods (single export block for API calls).
-export { fetchMailFolders, fetchMailListData };
+export { fetchMailFolders, fetchMailListData, fetchMailTags };

@@ -25,8 +25,19 @@ export type MailListItem = {
   su?: string;
   d?: string | number;
   f?: string;
+  tagNames?: string;
+  tn?: string;
   e?: Array<{ t?: string; a?: string; p?: string }>;
   _viewType?: 'message' | 'conversation';
+};
+
+/** Normalized tag shape consumed by `MailList.tsx` and Redux. */
+export type MailTag = {
+  id: string;
+  name: string;
+  color: number;
+  rgb: string;
+  unread: number;
 };
 
 /** Response shape returned by `fetchMailFolders`. */
@@ -38,4 +49,9 @@ export type MailFoldersResult = {
 /** Response shape returned by `fetchMailListData`. */
 export type MailListDataResult = {
   items: MailListItem[];
+};
+
+/** Response shape returned by `fetchMailTags`. */
+export type MailTagsResult = {
+  tags: MailTag[];
 };
