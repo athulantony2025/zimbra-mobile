@@ -10,35 +10,38 @@ import {
 import { useApolloClient } from '@apollo/client/react';
 import { useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
-import type { MainStackParamList } from '../navigation/types';
-import { useAppSelector } from '../store/hooks';
+import type { MainStackParamList } from '../../navigation/types';
+import { useAppSelector } from '../../store/hooks';
 import {
   GET_CONVERSATION_QUERY,
   GET_MESSAGE_QUERY,
   GET_PREFERENCES_QUERY,
-} from '../graphql/query';
+} from '../../graphql/query';
 import {
   MARK_READ_MUTATION,
   SEND_DELIVERY_REPORT_MUTATION,
-} from '../graphql/mutations';
+} from '../../graphql/mutations';
 import {
   fetchConversationViaSoap,
   fetchMailPreferencesViaSoap,
   fetchMessageViaSoap,
   markReadViaSoap,
   sendDeliveryReportViaSoap,
-} from '../SOAP/viewMailApi';
-import { BASE_URL, getAuthToken } from '../SOAP/api';
+} from '../../SOAP/viewMailApi';
+import { BASE_URL, getAuthToken } from '../../SOAP/api';
 import type {
   MailAttachment,
   MailConversation,
   MailMessage,
   MailPreferences,
-} from '../SOAP/viewMailApi';
+} from '../../SOAP/viewMailApi';
 import {
   COLORS,
-  DEFAULT_PREFERENCES,
   ErrorState,
+  LoadingState,
+} from '../shared';
+import {
+  DEFAULT_PREFERENCES,
   formatDate,
   getDisplayBody,
   getEventDetails,
@@ -47,11 +50,10 @@ import {
   isEventMessage,
   isGraphqlSchemaUnsupported,
   isUnreadByFlags,
-  LoadingState,
   MAX_BODY_SIZE,
   normalizePreferences,
-} from './shared';
-import type { EventDetails, RawGraphqlPreferences } from './shared';
+} from './viewMailUtils';
+import type { EventDetails, RawGraphqlPreferences } from './viewMailUtils';
 
 type AttachmentBadge = {
   backgroundColor: string;
@@ -171,6 +173,57 @@ const dedupeConversationMessages = (messages?: MailMessage[]) => {
   });
 
   return unique;
+};
+
+const collectThreadAttachments = (messages?: MailMessage[]) => {
+  const attachmentsByKey = new Map<string, MailAttachment>();
+
+  (messages || []).forEach(message => {
+    const messageId = String(message?.id || '').trim();
+    getVisibleAttachments(message?.attachments).forEach(attachment => {
+      const part = String(attachment.part || '').trim();
+      const attachmentMessageId = String(attachment.messageId || messageId).trim();
+      const name = getAttachmentName(attachment).toLowerCase();
+      const contentType = String(attachment.contentType || '').toLowerCase();
+      const normalizedAttachment: MailAttachment = {
+        ...attachment,
+        messageId: attachmentMessageId || attachment.messageId,
+      };
+      const normalizedPart = String(normalizedAttachment.part || '').trim();
+      const hasDownloadRef = !!(normalizedPart && attachmentMessageId);
+      const key =
+        name && contentType
+          ? `name:${name}|ct:${contentType}`
+          : name
+            ? `name:${name}`
+            : normalizedPart
+              ? `part:${normalizedPart}`
+              : `ct:${contentType}|s:${Number(normalizedAttachment.size || 0)}`;
+
+      const existing = attachmentsByKey.get(key);
+      if (!existing) {
+        attachmentsByKey.set(key, normalizedAttachment);
+        return;
+      }
+
+      const existingPart = String(existing.part || '').trim();
+      const existingMessageId = String(existing.messageId || '').trim();
+      const existingHasDownloadRef = !!(existingPart && existingMessageId);
+      const existingSize = Number(existing.size || 0);
+      const nextSize = Number(normalizedAttachment.size || 0);
+
+      // Prefer the entry that can download; otherwise keep the larger payload.
+      if (!existingHasDownloadRef && hasDownloadRef) {
+        attachmentsByKey.set(key, normalizedAttachment);
+        return;
+      }
+      if (existingHasDownloadRef === hasDownloadRef && nextSize > existingSize) {
+        attachmentsByKey.set(key, normalizedAttachment);
+      }
+    });
+  });
+
+  return Array.from(attachmentsByKey.values());
 };
 
 const ViewMail: React.FC = () => {
@@ -605,82 +658,116 @@ const ViewMail: React.FC = () => {
   ) => {
     if (!details && !calendarAttachmentDetected) return null;
 
+    const whenValue =
+      details?.start && details?.end
+        ? `${details.start} to ${details.end}`
+        : details?.start || details?.end || '';
+    const invitees = (details?.invitees || []).filter(invitee => !!invitee.trim());
+    const visibleInvitees = invitees.slice(0, 5);
+    const remainingInvitees = invitees.length - visibleInvitees.length;
+
     return (
       <View style={styles.eventWrap}>
-        <Text style={styles.eventTitle}>Event Details</Text>
+        <Text style={styles.eventTitle}>{details?.summary || 'Calendar Event'}</Text>
         {!details && calendarAttachmentDetected && (
           <Text style={styles.eventLine}>
             Calendar invite attachment detected. Event metadata was not in message
             body.
           </Text>
         )}
-        {!!details?.summary && (
-          <Text style={styles.eventLine}>
-            <Text style={styles.eventKey}>Title: </Text>
-            {details?.summary}
-          </Text>
-        )}
-        {!!details?.start && (
-          <Text style={styles.eventLine}>
-            <Text style={styles.eventKey}>Starts: </Text>
-            {details?.start}
-          </Text>
-        )}
-        {!!details?.end && (
-          <Text style={styles.eventLine}>
-            <Text style={styles.eventKey}>Ends: </Text>
-            {details?.end}
-          </Text>
-        )}
-        {!!details?.location && (
-          <Text style={styles.eventLine}>
-            <Text style={styles.eventKey}>Location: </Text>
-            {details?.location}
-          </Text>
+        {!!whenValue && (
+          <View style={styles.eventRow}>
+            <Text style={styles.eventLabel}>When</Text>
+            <Text style={styles.eventValue}>{whenValue}</Text>
+          </View>
         )}
         {!!details?.organizer && (
-          <Text style={styles.eventLine}>
-            <Text style={styles.eventKey}>Organizer: </Text>
-            {details?.organizer}
-          </Text>
+          <View style={styles.eventRow}>
+            <Text style={styles.eventLabel}>Organizer</Text>
+            <Text style={styles.eventValue}>{details.organizer}</Text>
+          </View>
+        )}
+        {!!details?.location && (
+          <View style={styles.eventRow}>
+            <Text style={styles.eventLabel}>Location</Text>
+            <Text style={styles.eventValue}>{details.location}</Text>
+          </View>
+        )}
+        {visibleInvitees.length > 0 && (
+          <View style={styles.eventRow}>
+            <Text style={styles.eventLabel}>Invitees</Text>
+            <View style={styles.eventInviteesWrap}>
+              {visibleInvitees.map(invitee => (
+                <View key={invitee} style={styles.eventInviteeChip}>
+                  <Text style={styles.eventInviteeText}>{invitee}</Text>
+                </View>
+              ))}
+              {remainingInvitees > 0 && (
+                <Text style={styles.eventInviteeMore}>+ {remainingInvitees} others</Text>
+              )}
+            </View>
+          </View>
         )}
         {!!details?.method && (
-          <Text style={styles.eventLine}>
-            <Text style={styles.eventKey}>Type: </Text>
-            {details?.method}
-          </Text>
+          <View style={styles.eventRow}>
+            <Text style={styles.eventLabel}>Type</Text>
+            <Text style={styles.eventValue}>{details.method}</Text>
+          </View>
         )}
       </View>
     );
   };
 
-  const renderMessageContent = () => (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Body</Text>
-      {isEventMessage(message || undefined) &&
-        renderEventDetails(
-          getEventDetails(message || undefined),
-          hasCalendarAttachment(message || undefined),
+  const renderMessageContent = () => {
+    const currentMessage = message || undefined;
+    const isEvent = isEventMessage(currentMessage);
+    const details = isEvent ? getEventDetails(currentMessage) : null;
+    const calendarAttachmentDetected = hasCalendarAttachment(currentMessage);
+    const showEventLayout = isEvent && (!!details || calendarAttachmentDetected);
+
+    return (
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>{showEventLayout ? 'Event' : 'Body'}</Text>
+        {showEventLayout && renderEventDetails(details, calendarAttachmentDetected)}
+        {!showEventLayout && (
+          <Text style={styles.bodyText}>{getDisplayBody(currentMessage)}</Text>
         )}
-      <Text style={styles.bodyText}>{getDisplayBody(message || undefined)}</Text>
-      {renderAttachments(message?.attachments, message?.id)}
-    </View>
-  );
+        {showEventLayout && !!details?.description && (
+          <View style={styles.eventNotesWrap}>
+            <Text style={styles.eventNotesTitle}>Notes</Text>
+            <Text style={styles.bodyText}>{details.description}</Text>
+          </View>
+        )}
+        {renderAttachments(message?.attachments, message?.id)}
+      </View>
+    );
+  };
 
   const renderConversationContent = () => {
     const messages = dedupeConversationMessages(conversation?.messages);
+    const threadAttachments = collectThreadAttachments(messages);
 
     if (messages.length <= 1) {
       const threadMessage = messages[0];
+      const threadIsEvent = isEventMessage(threadMessage);
+      const threadDetails = threadIsEvent ? getEventDetails(threadMessage) : null;
+      const threadHasCalendarAttachment = hasCalendarAttachment(threadMessage);
+      const threadShowEventLayout =
+        threadIsEvent && (!!threadDetails || threadHasCalendarAttachment);
       return (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Body</Text>
-          {isEventMessage(threadMessage) &&
-            renderEventDetails(
-              getEventDetails(threadMessage),
-              hasCalendarAttachment(threadMessage),
-            )}
-          <Text style={styles.bodyText}>{getDisplayBody(threadMessage)}</Text>
+          <Text style={styles.sectionTitle}>{threadShowEventLayout ? 'Event' : 'Body'}</Text>
+          {threadShowEventLayout &&
+            renderEventDetails(threadDetails, threadHasCalendarAttachment)}
+          {!threadShowEventLayout && (
+            <Text style={styles.bodyText}>{getDisplayBody(threadMessage)}</Text>
+          )}
+          {threadShowEventLayout && !!threadDetails?.description && (
+            <View style={styles.eventNotesWrap}>
+              <Text style={styles.eventNotesTitle}>Notes</Text>
+              <Text style={styles.bodyText}>{threadDetails.description}</Text>
+            </View>
+          )}
           {renderAttachments(threadMessage?.attachments, threadMessage?.id)}
         </View>
       );
@@ -689,20 +776,33 @@ const ViewMail: React.FC = () => {
     return (
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Thread Messages ({messages.length})</Text>
-        {messages.map((threadMessage, index) => (
-          <View key={threadMessage.id || `thread-${index}`} style={styles.threadCard}>
-            <Text style={styles.threadSubject}>
-              {threadMessage.subject || '(No subject)'}
-            </Text>
-            {isEventMessage(threadMessage) &&
-              renderEventDetails(
-                getEventDetails(threadMessage),
-                hasCalendarAttachment(threadMessage),
+        {messages.map((threadMessage, index) => {
+          const threadIsEvent = isEventMessage(threadMessage);
+          const threadDetails = threadIsEvent ? getEventDetails(threadMessage) : null;
+          const threadHasCalendarAttachment = hasCalendarAttachment(threadMessage);
+          const threadShowEventLayout =
+            threadIsEvent && (!!threadDetails || threadHasCalendarAttachment);
+
+          return (
+            <View key={threadMessage.id || `thread-${index}`} style={styles.threadCard}>
+              <Text style={styles.threadSubject}>
+                {threadMessage.subject || '(No subject)'}
+              </Text>
+              {threadShowEventLayout &&
+                renderEventDetails(threadDetails, threadHasCalendarAttachment)}
+              {!threadShowEventLayout && (
+                <Text style={styles.bodyText}>{getDisplayBody(threadMessage)}</Text>
               )}
-            <Text style={styles.bodyText}>{getDisplayBody(threadMessage)}</Text>
-            {renderAttachments(threadMessage.attachments, threadMessage.id)}
-          </View>
-        ))}
+              {threadShowEventLayout && !!threadDetails?.description && (
+                <View style={styles.eventNotesWrap}>
+                  <Text style={styles.eventNotesTitle}>Notes</Text>
+                  <Text style={styles.bodyText}>{threadDetails.description}</Text>
+                </View>
+              )}
+            </View>
+          );
+        })}
+        {renderAttachments(threadAttachments)}
       </View>
     );
   };
@@ -800,10 +900,53 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   eventTitle: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '700',
-    color: '#1e3a8a',
-    marginBottom: 6,
+    color: '#1f2937',
+    marginBottom: 10,
+  },
+  eventRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  eventLabel: {
+    width: 84,
+    color: '#6b7280',
+    fontSize: 13,
+    fontWeight: '600',
+    paddingTop: 2,
+  },
+  eventValue: {
+    flex: 1,
+    color: '#1f2937',
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  eventInviteesWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  eventInviteeChip: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 6,
+    backgroundColor: '#f9fafb',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  eventInviteeText: {
+    color: '#374151',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  eventInviteeMore: {
+    alignSelf: 'center',
+    color: '#0369a1',
+    fontSize: 13,
+    fontWeight: '700',
   },
   eventLine: {
     fontSize: 13,
@@ -814,6 +957,20 @@ const styles = StyleSheet.create({
   eventKey: {
     fontWeight: '700',
     color: '#1f2937',
+  },
+  eventNotesWrap: {
+    marginTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    paddingTop: 10,
+  },
+  eventNotesTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#4b5563',
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   attachmentRow: {
     borderTopWidth: 1,

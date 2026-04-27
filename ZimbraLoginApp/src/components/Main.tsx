@@ -4,7 +4,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import MailFolders from './MailFolders';
 import MailList from './MailList';
-import ViewMail from './ViewMail';
+import ViewMail from './ViewMails/ViewMail';
 import type { MainStackParamList } from '../navigation/types';
 import { fetchMailTags } from '../SOAP/mailApi';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
