@@ -32,56 +32,8 @@ export type EventDetails = {
   method?: string;
 };
 
-export type RawGraphqlPreferences = {
-  zimbraPrefMessageViewHtmlPreferred?: boolean | string;
-  zimbraPrefMarkMsgRead?: number | string;
-  zimbraPrefMailSendReadReceipts?: string;
-};
-
 export const isUnreadByFlags = (flags?: string) =>
   typeof flags === 'string' ? flags.includes('u') : false;
-
-const getErrorMessage = (error: unknown) => {
-  if (typeof error === 'string') return error;
-  if (error && typeof error === 'object' && 'message' in error) {
-    const message = (error as { message?: unknown }).message;
-    return typeof message === 'string' ? message : String(message ?? '');
-  }
-  return String(error ?? '');
-};
-
-export const isGraphqlSchemaUnsupported = (error: unknown) => {
-  const message = getErrorMessage(error).toLowerCase();
-  return (
-    message.includes('validation error') ||
-    message.includes('cannot query field') ||
-    message.includes('unknown type') ||
-    message.includes('fieldundefined')
-  );
-};
-
-export const normalizePreferences = (
-  rawPreferences: RawGraphqlPreferences,
-): MailPreferences => {
-  const htmlPreference = rawPreferences.zimbraPrefMessageViewHtmlPreferred;
-  const markReadPreference = Number(rawPreferences.zimbraPrefMarkMsgRead);
-
-  return {
-    zimbraPrefMessageViewHtmlPreferred:
-      typeof htmlPreference === 'boolean'
-        ? htmlPreference
-        : String(
-            htmlPreference ?? DEFAULT_PREFERENCES.zimbraPrefMessageViewHtmlPreferred,
-          ).toLowerCase() !== 'false',
-    zimbraPrefMarkMsgRead: Number.isFinite(markReadPreference)
-      ? markReadPreference
-      : DEFAULT_PREFERENCES.zimbraPrefMarkMsgRead,
-    zimbraPrefMailSendReadReceipts: String(
-      rawPreferences.zimbraPrefMailSendReadReceipts ||
-        DEFAULT_PREFERENCES.zimbraPrefMailSendReadReceipts,
-    ).toLowerCase(),
-  };
-};
 
 const decodeHtmlEntities = (input: string) =>
   input

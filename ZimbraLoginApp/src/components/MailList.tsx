@@ -152,6 +152,7 @@ const MailList = () => {
   const renderItem = ({ item }: { item: InboxItem }) => {
     const from = getSender(item);
     const subject = item.su || '(No subject)';
+    const unread = isUnread(item);
     const timestamp = Number(item.d);
     const date = Number.isFinite(timestamp)
       ? new Date(timestamp).toLocaleString()
@@ -162,7 +163,11 @@ const MailList = () => {
 
     return (
       <TouchableOpacity
-        style={[sharedStyles.card, styles.emailCard]}
+        style={[
+          sharedStyles.card,
+          styles.emailCard,
+          unread && styles.emailCardUnread,
+        ]}
         activeOpacity={0.75}
         onPress={() => {
           if (!item.id) return;
@@ -172,14 +177,20 @@ const MailList = () => {
             sender: from,
             timestamp: item.d,
             viewType: item._viewType || 'message',
-            unread: isUnread(item),
+            unread,
           });
         }}
       >
-        <Text style={styles.subject} numberOfLines={1}>
-          {subject}
-        </Text>
-        <Text style={styles.sender} numberOfLines={1}>
+        <View style={styles.subjectRow}>
+          <Text
+            style={[styles.subject, unread ? styles.subjectUnread : styles.subjectRead]}
+            numberOfLines={1}
+          >
+            {subject}
+          </Text>
+          {unread && <View style={styles.unreadDot} />}
+        </View>
+        <Text style={[styles.sender, unread && styles.senderUnread]} numberOfLines={1}>
           From: {from}
         </Text>
         {tags.length > 0 && (
@@ -202,7 +213,7 @@ const MailList = () => {
             })}
           </View>
         )}
-        {!!date && <Text style={styles.date}>{date}</Text>}
+        {!!date && <Text style={[styles.date, unread && styles.dateUnread]}>{date}</Text>}
       </TouchableOpacity>
     );
   };
@@ -272,13 +283,40 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 10,
   },
+  emailCardUnread: {
+    backgroundColor: '#f8fbff',
+    borderLeftWidth: 4,
+    borderLeftColor: '#0b66c3',
+  },
+  subjectRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+    gap: 8,
+  },
   subject: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#1f2937',
-    marginBottom: 4,
+    color: '#334155',
+    flex: 1,
   },
-  sender: { fontSize: 14, color: '#374151', marginBottom: 4 },
+  subjectRead: {
+    fontWeight: '600',
+  },
+  subjectUnread: {
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  unreadDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 999,
+    backgroundColor: '#0b66c3',
+  },
+  sender: { fontSize: 14, color: '#475569', marginBottom: 4 },
+  senderUnread: {
+    color: '#1f2937',
+    fontWeight: '600',
+  },
   tagRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -297,7 +335,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#ffffff',
   },
-  date: { fontSize: 12, color: '#6b7280' },
+  date: { fontSize: 12, color: '#64748b' },
+  dateUnread: {
+    color: '#334155',
+    fontWeight: '700',
+  },
 });
 
 export default MailList;

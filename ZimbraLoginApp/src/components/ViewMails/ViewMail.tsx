@@ -2,25 +2,14 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Linking,
   ScrollView,
-  StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useApolloClient } from '@apollo/client/react';
 import { useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { MainStackParamList } from '../../navigation/types';
 import { useAppSelector } from '../../store/hooks';
-import {
-  GET_CONVERSATION_QUERY,
-  GET_MESSAGE_QUERY,
-  GET_PREFERENCES_QUERY,
-} from '../../graphql/query';
-import {
-  MARK_READ_MUTATION,
-  SEND_DELIVERY_REPORT_MUTATION,
-} from '../../graphql/mutations';
 import {
   fetchConversationViaSoap,
   fetchMailPreferencesViaSoap,
@@ -48,12 +37,11 @@ import {
   hasCalendarAttachment,
   HEADER_INPUT,
   isEventMessage,
-  isGraphqlSchemaUnsupported,
   isUnreadByFlags,
   MAX_BODY_SIZE,
-  normalizePreferences,
 } from './viewMailUtils';
-import type { EventDetails, RawGraphqlPreferences } from './viewMailUtils';
+import type { EventDetails } from './viewMailUtils';
+import { styles } from './ViewMail.styles';
 
 type AttachmentBadge = {
   backgroundColor: string;
@@ -227,13 +215,11 @@ const collectThreadAttachments = (messages?: MailMessage[]) => {
 };
 
 const ViewMail: React.FC = () => {
-  const client = useApolloClient();
   const authToken = useAppSelector(state => state.auth.authToken);
   const route = useRoute<RouteProp<MainStackParamList, 'ViewMail'>>();
   const readTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const markReadSentRef = useRef(false);
   const isMountedRef = useRef(true);
-  const useSoapOnlyRef = useRef(false);
 
   const itemId = route.params?.messageId;
   const viewType = route.params?.viewType ?? 'message';
@@ -244,6 +230,9 @@ const ViewMail: React.FC = () => {
   const [subject, setSubject] = useState(route.params?.subject ?? '(No subject)');
   const [message, setMessage] = useState<MailMessage | null>(null);
   const [conversation, setConversation] = useState<MailConversation | null>(null);
+  const [expandedInviteesByKey, setExpandedInviteesByKey] = useState<
+    Record<string, boolean>
+  >({});
 
   const sender = route.params?.sender ?? 'Unknown sender';
   const receivedAt = useMemo(
@@ -290,6 +279,14 @@ const ViewMail: React.FC = () => {
     }
   };
 
+  const expandInvitees = useCallback((eventKey: string) => {
+    if (!eventKey) return;
+    setExpandedInviteesByKey(previous => {
+      if (previous[eventKey]) return previous;
+      return { ...previous, [eventKey]: true };
+    });
+  }, []);
+
   const performMarkRead = useCallback(
     async (
       actionType: 'MsgAction' | 'ConvAction',
@@ -301,51 +298,14 @@ const ViewMail: React.FC = () => {
       markReadSentRef.current = true;
 
       try {
-        if (!useSoapOnlyRef.current) {
-          try {
-            await client.mutate({
-              mutation: MARK_READ_MUTATION,
-              variables: {
-                type: actionType,
-                ids: [targetId],
-                op: 'read',
-                isLocal: false,
-              },
-            });
-          } catch (error) {
-            if (!isGraphqlSchemaUnsupported(error)) {
-              throw error;
-            }
-            useSoapOnlyRef.current = true;
-          }
-        }
-
-        if (useSoapOnlyRef.current) {
-          await markReadViaSoap(authToken, actionType, targetId);
-        }
+        await markReadViaSoap(authToken, actionType, targetId);
 
         if (
           preferences.zimbraPrefMailSendReadReceipts === 'always' &&
           route.params?.sendReadReceipt &&
           readReceiptMessageId
         ) {
-          if (!useSoapOnlyRef.current) {
-            try {
-              await client.mutate({
-                mutation: SEND_DELIVERY_REPORT_MUTATION,
-                variables: { messageId: readReceiptMessageId },
-              });
-            } catch (error) {
-              if (!isGraphqlSchemaUnsupported(error)) {
-                throw error;
-              }
-              useSoapOnlyRef.current = true;
-            }
-          }
-
-          if (useSoapOnlyRef.current) {
-            await sendDeliveryReportViaSoap(authToken, readReceiptMessageId);
-          }
+          await sendDeliveryReportViaSoap(authToken, readReceiptMessageId);
         }
 
         if (isMountedRef.current) {
@@ -358,7 +318,7 @@ const ViewMail: React.FC = () => {
         }
       }
     },
-    [authToken, client, route.params?.sendReadReceipt],
+    [authToken, route.params?.sendReadReceipt],
   );
 
   const scheduleMarkRead = useCallback(
@@ -408,29 +368,8 @@ const ViewMail: React.FC = () => {
   );
 
   const loadPreferences = useCallback(async (): Promise<MailPreferences> => {
-    if (!useSoapOnlyRef.current) {
-      try {
-        const preferenceResponse = await client.query<{
-          getPreferences?: RawGraphqlPreferences;
-        }>({
-          query: GET_PREFERENCES_QUERY,
-          fetchPolicy: 'network-only',
-        });
-
-        const rawPreferences = preferenceResponse.data?.getPreferences;
-        if (rawPreferences) {
-          return normalizePreferences(rawPreferences);
-        }
-      } catch (graphqlError) {
-        if (!isGraphqlSchemaUnsupported(graphqlError)) {
-          throw graphqlError;
-        }
-        useSoapOnlyRef.current = true;
-      }
-    }
-
     return fetchMailPreferencesViaSoap(authToken, DEFAULT_PREFERENCES);
-  }, [authToken, client]);
+  }, [authToken]);
 
   const loadMail = useCallback(async () => {
     if (!itemId) {
@@ -442,6 +381,7 @@ const ViewMail: React.FC = () => {
     setLoading(true);
     setError(null);
     setStatusNote(null);
+    setExpandedInviteesByKey({});
     markReadSentRef.current = false;
     clearReadTimer();
 
@@ -449,43 +389,13 @@ const ViewMail: React.FC = () => {
       const preferences = await loadPreferences();
 
       if (viewType === 'conversation') {
-        let loadedConversation: MailConversation | null = null;
-
-        if (!useSoapOnlyRef.current) {
-          try {
-            const conversationResponse = await client.query<{
-              conversation?: MailConversation;
-            }>({
-              query: GET_CONVERSATION_QUERY,
-              variables: {
-                id: itemId,
-                fetch: 'all',
-                html: preferences.zimbraPrefMessageViewHtmlPreferred,
-                needExp: true,
-                max: MAX_BODY_SIZE,
-                header: HEADER_INPUT,
-              },
-              fetchPolicy: 'network-only',
-            });
-            loadedConversation =
-              (conversationResponse.data?.conversation as MailConversation) || null;
-          } catch (error) {
-            if (!isGraphqlSchemaUnsupported(error)) {
-              throw error;
-            }
-            useSoapOnlyRef.current = true;
-          }
-        }
-
-        if (useSoapOnlyRef.current) {
-          loadedConversation = await fetchConversationViaSoap(
-            authToken,
-            itemId,
-            preferences.zimbraPrefMessageViewHtmlPreferred,
-            MAX_BODY_SIZE,
-            HEADER_INPUT,
-          );
-        }
+        const loadedConversation = await fetchConversationViaSoap(
+          authToken,
+          itemId,
+          preferences.zimbraPrefMessageViewHtmlPreferred,
+          MAX_BODY_SIZE,
+          HEADER_INPUT,
+        );
 
         if (!loadedConversation?.id) {
           throw new Error('Conversation not found.');
@@ -514,41 +424,13 @@ const ViewMail: React.FC = () => {
           loadedConversation.id,
         );
       } else {
-        let loadedMessage: MailMessage | null = null;
-
-        if (!useSoapOnlyRef.current) {
-          try {
-            const messageResponse = await client.query<{
-              message?: MailMessage;
-            }>({
-              query: GET_MESSAGE_QUERY,
-              variables: {
-                id: itemId,
-                html: preferences.zimbraPrefMessageViewHtmlPreferred,
-                max: MAX_BODY_SIZE,
-                isLocal: false,
-                header: HEADER_INPUT,
-              },
-              fetchPolicy: 'network-only',
-            });
-            loadedMessage = (messageResponse.data?.message as MailMessage) || null;
-          } catch (error) {
-            if (!isGraphqlSchemaUnsupported(error)) {
-              throw error;
-            }
-            useSoapOnlyRef.current = true;
-          }
-        }
-
-        if (useSoapOnlyRef.current) {
-          loadedMessage = await fetchMessageViaSoap(
-            authToken,
-            itemId,
-            preferences.zimbraPrefMessageViewHtmlPreferred,
-            MAX_BODY_SIZE,
-            HEADER_INPUT,
-          );
-        }
+        const loadedMessage = await fetchMessageViaSoap(
+          authToken,
+          itemId,
+          preferences.zimbraPrefMessageViewHtmlPreferred,
+          MAX_BODY_SIZE,
+          HEADER_INPUT,
+        );
 
         if (!loadedMessage?.id) {
           throw new Error('Message not found.');
@@ -574,7 +456,6 @@ const ViewMail: React.FC = () => {
     }
   }, [
     authToken,
-    client,
     itemId,
     loadPreferences,
     route.params?.subject,
@@ -655,6 +536,7 @@ const ViewMail: React.FC = () => {
   const renderEventDetails = (
     details: EventDetails | null,
     calendarAttachmentDetected = false,
+    eventKey = 'event-default',
   ) => {
     if (!details && !calendarAttachmentDetected) return null;
 
@@ -663,7 +545,8 @@ const ViewMail: React.FC = () => {
         ? `${details.start} to ${details.end}`
         : details?.start || details?.end || '';
     const invitees = (details?.invitees || []).filter(invitee => !!invitee.trim());
-    const visibleInvitees = invitees.slice(0, 5);
+    const showAllInvitees = !!expandedInviteesByKey[eventKey];
+    const visibleInvitees = showAllInvitees ? invitees : invitees.slice(0, 5);
     const remainingInvitees = invitees.length - visibleInvitees.length;
 
     return (
@@ -703,7 +586,12 @@ const ViewMail: React.FC = () => {
                 </View>
               ))}
               {remainingInvitees > 0 && (
-                <Text style={styles.eventInviteeMore}>+ {remainingInvitees} others</Text>
+                <TouchableOpacity
+                  activeOpacity={0.75}
+                  onPress={() => expandInvitees(eventKey)}
+                >
+                  <Text style={styles.eventInviteeMore}>+ {remainingInvitees} others</Text>
+                </TouchableOpacity>
               )}
             </View>
           </View>
@@ -728,7 +616,12 @@ const ViewMail: React.FC = () => {
     return (
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>{showEventLayout ? 'Event' : 'Body'}</Text>
-        {showEventLayout && renderEventDetails(details, calendarAttachmentDetected)}
+        {showEventLayout &&
+          renderEventDetails(
+            details,
+            calendarAttachmentDetected,
+            `message:${currentMessage?.id || itemId || 'single'}`,
+          )}
         {!showEventLayout && (
           <Text style={styles.bodyText}>{getDisplayBody(currentMessage)}</Text>
         )}
@@ -758,7 +651,11 @@ const ViewMail: React.FC = () => {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{threadShowEventLayout ? 'Event' : 'Body'}</Text>
           {threadShowEventLayout &&
-            renderEventDetails(threadDetails, threadHasCalendarAttachment)}
+            renderEventDetails(
+              threadDetails,
+              threadHasCalendarAttachment,
+              `thread-single:${threadMessage?.id || itemId || 'single'}`,
+            )}
           {!threadShowEventLayout && (
             <Text style={styles.bodyText}>{getDisplayBody(threadMessage)}</Text>
           )}
@@ -789,7 +686,11 @@ const ViewMail: React.FC = () => {
                 {threadMessage.subject || '(No subject)'}
               </Text>
               {threadShowEventLayout &&
-                renderEventDetails(threadDetails, threadHasCalendarAttachment)}
+                renderEventDetails(
+                  threadDetails,
+                  threadHasCalendarAttachment,
+                  `thread:${threadMessage.id || index}`,
+                )}
               {!threadShowEventLayout && (
                 <Text style={styles.bodyText}>{getDisplayBody(threadMessage)}</Text>
               )}
@@ -838,197 +739,5 @@ const ViewMail: React.FC = () => {
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f7fb',
-    padding: 14,
-  },
-  headerCard: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#e7ebf3',
-    padding: 14,
-    marginBottom: 12,
-  },
-  subject: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1f2937',
-    marginBottom: 8,
-  },
-  metaText: {
-    color: '#4b5563',
-    fontSize: 13,
-    marginBottom: 2,
-  },
-  statusText: {
-    marginTop: 8,
-    color: '#0369a1',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  content: {
-    paddingBottom: 18,
-  },
-  section: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#e7ebf3',
-    padding: 14,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1f2937',
-    marginBottom: 10,
-  },
-  bodyText: {
-    color: '#111827',
-    fontSize: 14,
-    lineHeight: 22,
-  },
-  eventWrap: {
-    borderWidth: 1,
-    borderColor: '#dbeafe',
-    borderRadius: 8,
-    backgroundColor: '#f8fbff',
-    padding: 10,
-    marginBottom: 10,
-  },
-  eventTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1f2937',
-    marginBottom: 10,
-  },
-  eventRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 8,
-  },
-  eventLabel: {
-    width: 84,
-    color: '#6b7280',
-    fontSize: 13,
-    fontWeight: '600',
-    paddingTop: 2,
-  },
-  eventValue: {
-    flex: 1,
-    color: '#1f2937',
-    fontSize: 15,
-    lineHeight: 22,
-  },
-  eventInviteesWrap: {
-    flex: 1,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  eventInviteeChip: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 6,
-    backgroundColor: '#f9fafb',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  eventInviteeText: {
-    color: '#374151',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  eventInviteeMore: {
-    alignSelf: 'center',
-    color: '#0369a1',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  eventLine: {
-    fontSize: 13,
-    color: '#1f2937',
-    marginBottom: 2,
-    lineHeight: 20,
-  },
-  eventKey: {
-    fontWeight: '700',
-    color: '#1f2937',
-  },
-  eventNotesWrap: {
-    marginTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
-    paddingTop: 10,
-  },
-  eventNotesTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#4b5563',
-    marginBottom: 6,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  attachmentRow: {
-    borderTopWidth: 1,
-    borderTopColor: '#edf1f7',
-    paddingTop: 10,
-    marginTop: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  attachmentRowDisabled: {
-    opacity: 0.6,
-  },
-  attachmentBadge: {
-    width: 44,
-    height: 30,
-    borderRadius: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  attachmentBadgeText: {
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  attachmentInfo: {
-    flex: 1,
-  },
-  attachmentName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1f2937',
-  },
-  attachmentMeta: {
-    marginTop: 2,
-    fontSize: 12,
-    color: '#6b7280',
-  },
-  attachmentAction: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#0369a1',
-  },
-  attachmentActionDisabled: {
-    color: '#9ca3af',
-  },
-  threadCard: {
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 10,
-  },
-  threadSubject: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1f2937',
-    marginBottom: 8,
-  },
-});
 
 export default ViewMail;

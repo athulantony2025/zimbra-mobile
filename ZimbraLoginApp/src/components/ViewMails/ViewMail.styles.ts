@@ -1,0 +1,193 @@
+import { StyleSheet } from 'react-native';
+
+export const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f5f7fb',
+    padding: 14,
+  },
+  headerCard: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e7ebf3',
+    padding: 14,
+    marginBottom: 12,
+  },
+  subject: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1f2937',
+    marginBottom: 8,
+  },
+  metaText: {
+    color: '#4b5563',
+    fontSize: 13,
+    marginBottom: 2,
+  },
+  statusText: {
+    marginTop: 8,
+    color: '#0369a1',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  content: {
+    paddingBottom: 18,
+  },
+  section: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e7ebf3',
+    padding: 14,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1f2937',
+    marginBottom: 10,
+  },
+  bodyText: {
+    color: '#111827',
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  eventWrap: {
+    borderWidth: 1,
+    borderColor: '#dbeafe',
+    borderRadius: 8,
+    backgroundColor: '#f8fbff',
+    padding: 10,
+    marginBottom: 10,
+  },
+  eventTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1f2937',
+    marginBottom: 10,
+  },
+  eventRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  eventLabel: {
+    width: 84,
+    color: '#6b7280',
+    fontSize: 13,
+    fontWeight: '600',
+    paddingTop: 2,
+  },
+  eventValue: {
+    flex: 1,
+    color: '#1f2937',
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  eventInviteesWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  eventInviteeChip: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 6,
+    backgroundColor: '#f9fafb',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  eventInviteeText: {
+    color: '#374151',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  eventInviteeMore: {
+    alignSelf: 'center',
+    color: '#0369a1',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  eventLine: {
+    fontSize: 13,
+    color: '#1f2937',
+    marginBottom: 2,
+    lineHeight: 20,
+  },
+  eventKey: {
+    fontWeight: '700',
+    color: '#1f2937',
+  },
+  eventNotesWrap: {
+    marginTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    paddingTop: 10,
+  },
+  eventNotesTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#4b5563',
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  attachmentRow: {
+    borderTopWidth: 1,
+    borderTopColor: '#edf1f7',
+    paddingTop: 10,
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  attachmentRowDisabled: {
+    opacity: 0.6,
+  },
+  attachmentBadge: {
+    width: 44,
+    height: 30,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attachmentBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  attachmentInfo: {
+    flex: 1,
+  },
+  attachmentName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1f2937',
+  },
+  attachmentMeta: {
+    marginTop: 2,
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  attachmentAction: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0369a1',
+  },
+  attachmentActionDisabled: {
+    color: '#9ca3af',
+  },
+  threadCard: {
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 10,
+  },
+  threadSubject: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1f2937',
+    marginBottom: 8,
+  },
+});
